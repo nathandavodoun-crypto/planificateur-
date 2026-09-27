@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Planificateur PCSI</title>
+  <meta name="description" content="Planifie automatiquement tes devoirs, DM et révisions selon tes disponibilités." />
+
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <meta name="theme-color" content="#2563eb" />
+
+  <!-- Installation sur iPhone ("Ajouter à l'écran d'accueil") -->
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Planificateur" />
+
+  <link rel="icon" href="./icons/icon-192.png" />
+  <link rel="stylesheet" href="./css/styles.css" />
+</head>
+<body>
+  <div id="app"></div>
+
+  <nav class="bottom-nav">
+    <button class="nav-btn" data-route="#/jour" onclick="location.hash='#/jour'">
+      <span class="nav-icon">📅</span>
+      <span>Jour</span>
+    </button>
+    <button class="nav-btn" data-route="#/ajouter" onclick="location.hash='#/ajouter'">
+      <span class="nav-icon">➕</span>
+      <span>Ajouter</span>
+    </button>
+    <button class="nav-btn" data-route="#/reglages" onclick="location.hash='#/reglages'">
+      <span class="nav-icon">⚙️</span>
+      <span>Réglages</span>
+    </button>
+  </nav>
+
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>

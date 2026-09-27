@@ -1,0 +1,10 @@
+{
+  "name": "planificateur-pcsi",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "PWA de planification de travail personnel pour un élève de PCSI — aucune dépendance, aucun build.",
+  "scripts": {
+    "test:scenarios": "node tests/scenarios.mjs"
+  }
+}
