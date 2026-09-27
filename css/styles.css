@@ -336,6 +336,13 @@ input, select, textarea {
   font-size: 12px;
 }
 
+.task-item.is-done {
+  opacity: 0.55;
+}
+.task-item.is-done strong {
+  text-decoration: line-through;
+}
+
 .list-item button {
   background: none;
   border: none;

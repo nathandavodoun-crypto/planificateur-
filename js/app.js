@@ -4,11 +4,13 @@
 import { subscribe } from './store.js';
 import { renderDayView } from './views/dayView.js';
 import { renderTaskFormView } from './views/taskFormView.js';
+import { renderTaskListView } from './views/taskListView.js';
 import { renderSettingsView } from './views/settingsView.js';
 
 const routes = {
   '#/jour': renderDayView,
   '#/ajouter': renderTaskFormView,
+  '#/devoirs': renderTaskListView,
   '#/reglages': renderSettingsView,
 };
 
