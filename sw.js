@@ -3,7 +3,7 @@
 // d'accueil"). Ne touche jamais aux données (elles vivent dans localStorage,
 // pas ici).
 
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v3';
 const CACHE_NAME = `planificateur-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
@@ -15,6 +15,7 @@ const PRECACHE_URLS = [
   './js/store.js',
   './js/models.js',
   './js/scheduler.js',
+  './js/colleChapters.js',
   './js/utils/date.js',
   './js/views/dayView.js',
   './js/views/taskFormView.js',

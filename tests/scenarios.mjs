@@ -13,9 +13,16 @@ import {
   createWeeklyConstraint,
   createOneOffEvent,
   createSession,
+  createChapter,
   DEFAULT_SUBJECTS,
 } from '../js/models.js';
-import { timeToMinutes, addDaysISO, formatDateFR, formatDuration } from '../js/utils/date.js';
+import {
+  ensureRecurringColleInstances,
+  ensureSpacedRepetitionTasks,
+  setColleChapters,
+  handleTaskCompletionSideEffects,
+} from '../js/colleChapters.js';
+import { timeToMinutes, addDaysISO, formatDateFR, formatDuration, combineDateTime } from '../js/utils/date.js';
 
 let totalChecks = 0;
 let failedChecks = 0;
@@ -371,11 +378,219 @@ function scenarioD() {
 }
 
 // ---------------------------------------------------------------------------
+// Scénario E — Colle de maths vendredi, chapitre vu il y a 6 jours (fusion)
+// ---------------------------------------------------------------------------
+
+function scenarioE() {
+  const now = new Date(2026, 8, 28, 7, 0); // lundi
+  const settings = defaultSettings();
+  const weeklyConstraints = baseConstraints();
+
+  const friday = addDaysISO(REF_DATE, 4);
+
+  // Le chapitre a déjà passé sa révision J+1 en "facile" -> stage 1 (J+7),
+  // prochaine révision prévue demain (mardi), avec une tâche déjà en attente.
+  const chapter = createChapter({
+    subject: 'maths',
+    title: 'Intégrales',
+    dateSeen: addDaysISO(REF_DATE, -6),
+    stage: 1,
+    nextReviewDate: addDaysISO(REF_DATE, 1),
+    history: [{ date: addDaysISO(REF_DATE, -5), stage: 0, difficulty: 'facile', fusedWithColle: false }],
+  });
+  const pendingTask = createTask({
+    subject: 'maths',
+    type: 'revision_espacee',
+    title: `Révision — ${chapter.title}`,
+    deadlineDate: chapter.nextReviewDate,
+    estimatedDurationMinutes: settings.spacedRepetition.defaultDurationMinutes,
+    priority: 1,
+    chapterId: chapter.id,
+  });
+  chapter.pendingTaskId = pendingTask.id;
+
+  const colleEvent = createOneOffEvent({
+    category: 'colle',
+    label: 'Colle Maths',
+    subject: 'maths',
+    date: friday,
+    startTime: '14:00',
+    endTime: '14:20',
+  });
+
+  const data = {
+    tasks: [pendingTask],
+    sessions: [],
+    weeklyConstraints,
+    oneOffEvents: [colleEvent],
+    chapters: [chapter],
+    recurringColleTemplates: [],
+    settings,
+  };
+
+  // Affecter le chapitre à la colle déclenche la fusion.
+  setColleChapters(data, colleEvent.id, [chapter.id], now);
+  ensureRecurringColleInstances(data, now);
+  ensureSpacedRepetitionTasks(data, now);
+  const result = recomputeSchedule(now, data);
+  data.sessions = result.sessions;
+  const tasksById = new Map(data.tasks.map((t) => [t.id, t]));
+
+  printSchedule('Scénario E : Fusion colle ↔ chapitre', result, tasksById, weeklyConstraints, [colleEvent], settings, REF_DATE, friday);
+
+  console.log('Vérifications :');
+  runStandardChecks(result.sessions, settings, weeklyConstraints, [colleEvent]);
+
+  check('Le chapitre est bien marqué fusionné avec la colle', chapter.fusedIntoEventId === colleEvent.id);
+  check("Sa tâche de révision espacée autonome n'existe plus", chapter.pendingTaskId === null);
+  check(
+    "La tâche revision_espacee d'origine a été supprimée (fusionnée, pas de doublon)",
+    !data.tasks.some((t) => t.id === pendingTask.id)
+  );
+
+  const prepTask = data.tasks.find((t) => t.type === 'preparation_colle');
+  check('Une tâche de préparation de colle a été créée, liée au bon chapitre', !!prepTask && prepTask.linkedChapterIds.includes(chapter.id));
+  check('Sa durée correspond à un seul chapitre (45 min par défaut)', prepTask.estimatedDurationMinutes === settings.colle.defaultDurationMinutes);
+  check("Son échéance est l'heure de la colle elle-même", prepTask.deadlineDate === friday && prepTask.deadlineTime === '14:00');
+
+  const prepSessions = result.sessions.filter((s) => s.taskId === prepTask.id);
+  check('La session de préparation est placée avant la colle (mercredi ou jeudi)', prepSessions.length === 1 && [addDaysISO(REF_DATE, 2), addDaysISO(REF_DATE, 3)].includes(prepSessions[0].date));
+  check(
+    "Aucune session de révision espacée autonome n'apparaît pour ce chapitre cette semaine",
+    !result.sessions.some((s) => data.tasks.find((t) => t.id === s.taskId)?.chapterId === chapter.id)
+  );
+
+  // --- Complétion de la prépa de colle, marquée "facile" -------------------
+  const prepSession = prepSessions[0];
+  const completionInstant = new Date(combineDateTime(prepSession.date, prepSession.endTime).getTime() + 5 * 60000);
+  prepSession.status = 'terminee';
+  prepSession.completedAt = completionInstant.getTime();
+  prepTask.status = 'termine';
+  handleTaskCompletionSideEffects(data, prepTask, { [chapter.id]: 'facile' }, completionInstant);
+  ensureSpacedRepetitionTasks(data, completionInstant);
+  const result2 = recomputeSchedule(completionInstant, data);
+
+  check('Après la colle réussie ("facile"), le chapitre avance au stade suivant (J+30)', chapter.stage === 2);
+  const expectedNext = addDaysISO(prepSession.date, Math.round(30 * settings.spacedRepetition.easyStretchFactor));
+  check('La prochaine révision est repoussée en conséquence (30 × 1.5 = 45 jours)', chapter.nextReviewDate === expectedNext);
+  check('Le chapitre redevient autonome (plus fusionné)', chapter.fusedIntoEventId === null);
+  check('Une nouvelle tâche de révision espacée est matérialisée pour la suite', !!chapter.pendingTaskId && chapter.pendingTaskId !== pendingTask.id);
+}
+
+// ---------------------------------------------------------------------------
+// Scénario F — Semaine avec 2 colles, 1 DM et 5 chapitres en répétition espacée
+// ---------------------------------------------------------------------------
+
+function scenarioF() {
+  const now = new Date(2026, 8, 28, 7, 0);
+  const settings = defaultSettings();
+  const weeklyConstraints = baseConstraints();
+
+  const tuesday = addDaysISO(REF_DATE, 1);
+  const thursday = addDaysISO(REF_DATE, 3);
+
+  const colle1 = createOneOffEvent({ category: 'colle', label: 'Colle Physique', subject: 'physique', date: tuesday, startTime: '10:00', endTime: '10:20' });
+  const colle2 = createOneOffEvent({ category: 'colle', label: 'Colle Anglais', subject: 'anglais', date: thursday, startTime: '16:00', endTime: '16:20' });
+
+  const chapA = createChapter({ subject: 'physique', title: 'Mécanique', dateSeen: addDaysISO(REF_DATE, -3) });
+  const chapB = createChapter({ subject: 'physique', title: 'Optique', dateSeen: addDaysISO(REF_DATE, -3) });
+  const chapC = createChapter({ subject: 'anglais', title: 'Irregular verbs', dateSeen: addDaysISO(REF_DATE, -3) });
+  // Chapitres autonomes (non fusionnés), révisions dans la semaine.
+  const chapD = createChapter({ subject: 'chimie', title: 'Acides-bases', dateSeen: addDaysISO(REF_DATE, -6), nextReviewDate: addDaysISO(REF_DATE, 2) });
+  const chapE = createChapter({ subject: 'si', title: 'Asservissements', dateSeen: addDaysISO(REF_DATE, -6), nextReviewDate: addDaysISO(REF_DATE, 5) });
+
+  const dm = createTask({ subject: 'maths', type: 'dm', title: 'DM Maths', deadlineDate: addDaysISO(REF_DATE, 4), deadlineTime: '18:00', estimatedDurationMinutes: 90, priority: 2 });
+
+  const data = {
+    tasks: [dm],
+    sessions: [],
+    weeklyConstraints,
+    oneOffEvents: [colle1, colle2],
+    chapters: [chapA, chapB, chapC, chapD, chapE],
+    recurringColleTemplates: [],
+    settings,
+  };
+
+  setColleChapters(data, colle1.id, [chapA.id, chapB.id], now);
+  setColleChapters(data, colle2.id, [chapC.id], now);
+  ensureRecurringColleInstances(data, now);
+  ensureSpacedRepetitionTasks(data, now);
+  const result = recomputeSchedule(now, data);
+  const tasksById = new Map(data.tasks.map((t) => [t.id, t]));
+
+  printSchedule('Scénario F : 2 colles + 1 DM + chapitres', result, tasksById, weeklyConstraints, [colle1, colle2], settings, REF_DATE, addDaysISO(REF_DATE, 6));
+
+  console.log('Vérifications :');
+  runStandardChecks(result.sessions, settings, weeklyConstraints, [colle1, colle2]);
+
+  const prep1 = data.tasks.find((t) => t.linkedEventId === colle1.id);
+  const prep2 = data.tasks.find((t) => t.linkedEventId === colle2.id);
+  check('La prépa de la colle de physique (2 chapitres) dure plus longtemps que le défaut', prep1.estimatedDurationMinutes > settings.colle.defaultDurationMinutes);
+  check('Ses sessions ne tombent jamais le jour de la colle elle-même (mardi)', !result.sessions.some((s) => s.taskId === prep1.id && s.date === tuesday));
+  check('La prépa de la colle d\'anglais ne tombe jamais le jour de la colle (jeudi)', !result.sessions.some((s) => s.taskId === prep2.id && s.date === thursday));
+
+  const chapDSessions = result.sessions.filter((s) => tasksById.get(s.taskId)?.chapterId === chapD.id);
+  check('La révision du chapitre D (autonome) est bien placée dans sa fenêtre', chapDSessions.length > 0 && chapDSessions.every((s) => s.date <= chapD.nextReviewDate));
+
+  const dmSessions = result.sessions.filter((s) => s.taskId === dm.id);
+  check('Le DM obtient bien ses 90 minutes malgré la concurrence des révisions', dmSessions.reduce((sum, s) => sum + s.durationMinutes, 0) === dm.estimatedDurationMinutes);
+}
+
+// ---------------------------------------------------------------------------
+// Scénario G — Une révision marquée "difficile"
+// ---------------------------------------------------------------------------
+
+function scenarioG() {
+  const now = new Date(2026, 8, 28, 7, 0);
+  const settings = defaultSettings();
+  const weeklyConstraints = [];
+
+  const chapter = createChapter({ subject: 'francais', title: 'Figures de style', dateSeen: REF_DATE, nextReviewDate: addDaysISO(REF_DATE, 1) });
+  const pendingTask = createTask({
+    subject: 'francais',
+    type: 'revision_espacee',
+    title: `Révision — ${chapter.title}`,
+    deadlineDate: chapter.nextReviewDate,
+    estimatedDurationMinutes: settings.spacedRepetition.defaultDurationMinutes,
+    priority: 1,
+    chapterId: chapter.id,
+  });
+  chapter.pendingTaskId = pendingTask.id;
+
+  const data = { tasks: [pendingTask], sessions: [], weeklyConstraints, oneOffEvents: [], chapters: [chapter], recurringColleTemplates: [], settings };
+  ensureSpacedRepetitionTasks(data, now);
+  const result = recomputeSchedule(now, data);
+  data.sessions = result.sessions;
+
+  printSchedule('Scénario G : révision marquée difficile', result, new Map(data.tasks.map((t) => [t.id, t])), weeklyConstraints, [], settings, REF_DATE, addDaysISO(REF_DATE, 2));
+
+  const session = result.sessions.find((s) => s.taskId === pendingTask.id);
+  check('La révision J+1 a bien été placée', !!session);
+
+  const completionInstant = new Date(combineDateTime(session.date, session.endTime).getTime() + 5 * 60000);
+  session.status = 'terminee';
+  session.completedAt = completionInstant.getTime();
+  pendingTask.status = 'termine';
+  handleTaskCompletionSideEffects(data, pendingTask, { [chapter.id]: 'difficile' }, completionInstant);
+  ensureSpacedRepetitionTasks(data, completionInstant); // matérialise la nouvelle tâche en attente
+
+  console.log('Vérifications :');
+  check("Le stade n'avance PAS (le chapitre n'est pas considéré acquis)", chapter.stage === 0);
+  const expectedNext = addDaysISO(session.date, Math.max(1, Math.round(1 * settings.spacedRepetition.hardShrinkFactor)));
+  check('Une révision supplémentaire est programmée le lendemain au plus tôt (pas le jour même)', chapter.nextReviewDate === expectedNext && chapter.nextReviewDate > session.date);
+  check("L'ancienne tâche reste dans l'historique (marquée terminée), pas supprimée", data.tasks.some((t) => t.id === pendingTask.id && t.status === 'termine'));
+  check('Une nouvelle tâche de révision, différente de l\'ancienne, est en attente', !!chapter.pendingTaskId && chapter.pendingTaskId !== pendingTask.id);
+}
+
+// ---------------------------------------------------------------------------
 
 scenarioA();
 scenarioB();
 scenarioC();
 scenarioD();
+scenarioE();
+scenarioF();
+scenarioG();
 
 console.log(`\n${totalChecks - failedChecks}/${totalChecks} vérifications passées.`);
 if (failedChecks > 0) {

@@ -132,6 +132,29 @@ function computeTargetWindow(todayIso, deadlineDateISO, safetyMarginDays) {
 }
 
 /**
+ * Sélectionne la fenêtre de placement selon le type de tâche. Une
+ * préparation de colle auto-générée (linkedEventId non nul) se concentre
+ * dans les 1-2 jours avant la colle plutôt que de s'étaler depuis
+ * aujourd'hui ; une révision espacée se concentre autour de sa date cible
+ * avec une petite marge de souplesse — dans les deux cas, la seule vraie
+ * limite dure reste l'échéance elle-même (deadlineDate/deadlineTime).
+ */
+function computeWindowForTask(task, todayIso, settings) {
+  if (task.type === 'preparation_colle' && task.linkedEventId) {
+    const { revisionLeadDaysMin, revisionLeadDaysMax } = settings.colle;
+    const earliestDay = maxISO([todayIso, addDaysISO(task.deadlineDate, -revisionLeadDaysMax)]);
+    const targetLastDay = maxISO([earliestDay, addDaysISO(task.deadlineDate, -revisionLeadDaysMin)]);
+    return { earliestDay, targetLastDay };
+  }
+  if (task.type === 'revision_espacee') {
+    const earliestDay = maxISO([todayIso, addDaysISO(task.deadlineDate, -settings.spacedRepetition.windowSlackDays)]);
+    const targetLastDay = maxISO([earliestDay, task.deadlineDate]);
+    return { earliestDay, targetLastDay };
+  }
+  return computeTargetWindow(todayIso, task.deadlineDate, settings.safetyMarginDays);
+}
+
+/**
  * Attribue à chaque session une date plancher ("notBeforeDate"), répartie
  * entre aujourd'hui et la fin de la fenêtre cible. C'est ce mécanisme qui
  * produit l'étalement dans le temps, sans jamais entrer en conflit avec
@@ -245,7 +268,7 @@ export function recomputeSchedule(now, data) {
     }
     if (durations.length === 0) continue;
 
-    const { earliestDay, targetLastDay } = computeTargetWindow(todayIso, task.deadlineDate, settings.safetyMarginDays);
+    const { earliestDay, targetLastDay } = computeWindowForTask(task, todayIso, settings);
     const minGapDays = task.type === 'revision_ds' ? settings.minGapDaysDsRevision : settings.minGapDaysSameTaskDefault;
     const notBeforeDates = distributeNotBeforeDates(durations.length, earliestDay, targetLastDay, minGapDays);
 

@@ -1,8 +1,23 @@
-// Saisie rapide d'un devoir (objectif : moins de 15 secondes).
+// Saisie rapide : devoir (< 15s), colle, ou chapitre — un sélecteur en haut
+// bascule entre les trois petits formulaires, sans changer d'onglet.
 
-import { getState, addTask } from '../store.js';
+import { getState, addTask, addOneOffEvent, addRecurringColleTemplate, addChapter, setColleChapters } from '../store.js';
 import { DEFAULT_DURATION_MINUTES_BY_TYPE, TASK_TYPE_LABELS } from '../models.js';
 import { todayISO } from '../utils/date.js';
+
+const DAYS_OPTIONS = [
+  { index: 1, label: 'Lundi' },
+  { index: 2, label: 'Mardi' },
+  { index: 3, label: 'Mercredi' },
+  { index: 4, label: 'Jeudi' },
+  { index: 5, label: 'Vendredi' },
+  { index: 6, label: 'Samedi' },
+  { index: 0, label: 'Dimanche' },
+];
+
+// Onglet actif du sélecteur — conservé au niveau du module, comme selectedDate
+// dans dayView, pour survivre aux re-rendus déclenchés par le store.
+let activeTab = 'devoir';
 
 function escapeHtml(str) {
   const div = document.createElement('div');
@@ -16,6 +31,42 @@ export function renderTaskFormView(container) {
   const wrapper = document.createElement('div');
   wrapper.className = 'view view-task-form';
 
+  const tabs = document.createElement('div');
+  tabs.className = 'form-tabs';
+  for (const [key, label] of [
+    ['devoir', 'Devoir'],
+    ['colle', 'Colle'],
+    ['chapitre', 'Chapitre'],
+  ]) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'form-tab' + (activeTab === key ? ' active' : '');
+    btn.textContent = label;
+    btn.addEventListener('click', () => {
+      activeTab = key;
+      container.innerHTML = '';
+      renderTaskFormView(container);
+    });
+    tabs.appendChild(btn);
+  }
+  wrapper.appendChild(tabs);
+
+  if (activeTab === 'colle') {
+    renderColleForm(wrapper, state);
+  } else if (activeTab === 'chapitre') {
+    renderChapitreForm(wrapper, state);
+  } else {
+    renderDevoirForm(wrapper, state);
+  }
+
+  container.appendChild(wrapper);
+}
+
+// ---------------------------------------------------------------------------
+// Devoir
+// ---------------------------------------------------------------------------
+
+function renderDevoirForm(wrapper, state) {
   const title = document.createElement('h2');
   title.textContent = 'Ajouter un devoir';
   wrapper.appendChild(title);
@@ -31,7 +82,10 @@ export function renderTaskFormView(container) {
 
     <label>Type
       <select name="type">
-        ${Object.entries(TASK_TYPE_LABELS).map(([id, label]) => `<option value="${id}">${escapeHtml(label)}</option>`).join('')}
+        ${Object.entries(TASK_TYPE_LABELS)
+          .filter(([id]) => id !== 'revision_espacee') // généré automatiquement, pas saisi à la main
+          .map(([id, label]) => `<option value="${id}">${escapeHtml(label)}</option>`)
+          .join('')}
       </select>
     </label>
 
@@ -96,5 +150,189 @@ export function renderTaskFormView(container) {
   });
 
   wrapper.appendChild(form);
-  container.appendChild(wrapper);
+}
+
+// ---------------------------------------------------------------------------
+// Colle
+// ---------------------------------------------------------------------------
+
+function renderColleForm(wrapper, state) {
+  const title = document.createElement('h2');
+  title.textContent = 'Ajouter une colle';
+  wrapper.appendChild(title);
+
+  const form = document.createElement('form');
+  form.className = 'task-form';
+  form.innerHTML = `
+    <label>Matière
+      <select name="subject">
+        ${state.settings.subjects.map((s) => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.label)}</option>`).join('')}
+      </select>
+    </label>
+
+    <label class="checkbox-row">
+      <input type="checkbox" name="recurring" />
+      Colle récurrente (même créneau chaque semaine)
+    </label>
+
+    <div data-field="date-field">
+      <label>Date
+        <input type="date" name="date" required min="${todayISO(new Date())}" />
+      </label>
+    </div>
+    <div data-field="day-field" style="display:none">
+      <label>Jour de la semaine
+        <select name="dayOfWeek">
+          ${DAYS_OPTIONS.map((d) => `<option value="${d.index}">${d.label}</option>`).join('')}
+        </select>
+      </label>
+    </div>
+
+    <div class="settings-grid">
+      <label>Début
+        <input type="time" name="startTime" value="14:00" required />
+      </label>
+      <label>Fin
+        <input type="time" name="endTime" value="14:20" required />
+      </label>
+    </div>
+
+    <div data-field="chapters-field"></div>
+
+    <label>+ Nouveau chapitre pour cette colle (facultatif)
+      <input type="text" name="newChapterTitle" placeholder="ex. Suites numériques" />
+    </label>
+
+    <button type="submit" class="btn-primary">Ajouter la colle</button>
+  `;
+
+  const subjectSelect = form.elements.subject;
+  const recurringCheckbox = form.elements.recurring;
+  const dateField = form.querySelector('[data-field="date-field"]');
+  const dayField = form.querySelector('[data-field="day-field"]');
+  const chaptersField = form.querySelector('[data-field="chapters-field"]');
+
+  function renderChapterPicker() {
+    const subject = subjectSelect.value;
+    const chapters = state.chapters.filter((c) => c.subject === subject && c.status !== 'archive');
+    if (chapters.length === 0) {
+      chaptersField.innerHTML = '<p class="notice">Aucun chapitre existant pour cette matière — tu peux en créer un juste en dessous.</p>';
+      return;
+    }
+    chaptersField.innerHTML =
+      '<p class="notice">Chapitre(s) concerné(s) :</p><div class="days-picker">' +
+      chapters
+        .map(
+          (c) =>
+            `<label><input type="checkbox" name="chapterId" value="${c.id}" />${escapeHtml(c.title)}</label>`
+        )
+        .join('') +
+      '</div>';
+  }
+  subjectSelect.addEventListener('change', renderChapterPicker);
+  renderChapterPicker();
+
+  recurringCheckbox.addEventListener('change', () => {
+    const recurring = recurringCheckbox.checked;
+    dateField.style.display = recurring ? 'none' : '';
+    dayField.style.display = recurring ? '' : 'none';
+    form.elements.date.required = !recurring;
+  });
+
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    const subject = data.get('subject');
+    const subjectLabel = state.settings.subjects.find((s) => s.id === subject)?.label || subject;
+    const startTime = data.get('startTime');
+    const endTime = data.get('endTime');
+    const recurring = data.get('recurring') === 'on';
+
+    const chapterIds = [...form.querySelectorAll('input[name="chapterId"]:checked')].map((el) => el.value);
+    const newChapterTitle = data.get('newChapterTitle')?.trim();
+    if (newChapterTitle) {
+      const chapter = addChapter({ subject, title: newChapterTitle, dateSeen: todayISO(new Date()) });
+      chapterIds.push(chapter.id);
+    }
+
+    let eventId;
+    if (recurring) {
+      const template = addRecurringColleTemplate({
+        subject,
+        label: `Colle ${subjectLabel}`,
+        dayOfWeek: Number(data.get('dayOfWeek')),
+        startTime,
+        endTime,
+      });
+      // La première occurrence vient d'être générée par ensureRecurringColleInstances (via commit()).
+      const instance = getState().oneOffEvents.find((e) => e.templateId === template.id);
+      eventId = instance?.id;
+    } else {
+      const eventObj = addOneOffEvent({
+        category: 'colle',
+        label: `Colle ${subjectLabel}`,
+        subject,
+        date: data.get('date'),
+        startTime,
+        endTime,
+      });
+      eventId = eventObj.id;
+    }
+
+    if (eventId && chapterIds.length > 0) {
+      setColleChapters(eventId, chapterIds);
+    }
+
+    location.hash = '#/jour';
+  });
+
+  wrapper.appendChild(form);
+}
+
+// ---------------------------------------------------------------------------
+// Chapitre
+// ---------------------------------------------------------------------------
+
+function renderChapitreForm(wrapper, state) {
+  const title = document.createElement('h2');
+  title.textContent = 'Ajouter un chapitre';
+  wrapper.appendChild(title);
+
+  const intro = document.createElement('p');
+  intro.className = 'notice';
+  intro.textContent = 'Un chapitre vu en cours est automatiquement suivi en répétition espacée (J+1, J+7, J+30 par défaut, réglable dans Réglages).';
+  wrapper.appendChild(intro);
+
+  const form = document.createElement('form');
+  form.className = 'task-form';
+  form.innerHTML = `
+    <label>Matière
+      <select name="subject">
+        ${state.settings.subjects.map((s) => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.label)}</option>`).join('')}
+      </select>
+    </label>
+
+    <label>Titre du chapitre
+      <input type="text" name="title" placeholder="ex. Intégrales" required />
+    </label>
+
+    <label>Date vue en cours
+      <input type="date" name="dateSeen" required value="${todayISO(new Date())}" max="${todayISO(new Date())}" />
+    </label>
+
+    <button type="submit" class="btn-primary">Ajouter et planifier les révisions</button>
+  `;
+
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    addChapter({
+      subject: data.get('subject'),
+      title: data.get('title').trim(),
+      dateSeen: data.get('dateSeen'),
+    });
+    location.hash = '#/devoirs';
+  });
+
+  wrapper.appendChild(form);
 }

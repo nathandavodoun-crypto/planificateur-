@@ -3,7 +3,7 @@
 //
 // Convention de dates : voir js/utils/date.js (dates = "YYYY-MM-DD", heures = "HH:MM").
 
-/** @typedef {'dm'|'exercices'|'preparation_colle'|'revision_ds'|'lecture'|'autre'} TaskType */
+/** @typedef {'dm'|'exercices'|'preparation_colle'|'revision_ds'|'revision_espacee'|'lecture'|'autre'} TaskType */
 /** @typedef {'a_faire'|'en_cours'|'termine'} TaskStatus */
 /** @typedef {'planifiee'|'terminee'|'non_faite'} SessionStatus */
 
@@ -14,6 +14,7 @@ export const DEFAULT_DURATION_MINUTES_BY_TYPE = {
   exercices: 60,
   preparation_colle: 90,
   revision_ds: 180,
+  revision_espacee: 20,
   lecture: 45,
   autre: 60,
 };
@@ -23,6 +24,7 @@ export const TASK_TYPE_LABELS = {
   exercices: 'Exercices',
   preparation_colle: 'Préparation de colle',
   revision_ds: 'Révision de DS',
+  revision_espacee: 'Révision espacée',
   lecture: 'Lecture',
   autre: 'Autre',
 };
@@ -38,7 +40,7 @@ export const DEFAULT_SUBJECTS = [
   { id: 'autre', label: 'Autre', color: '#6B7280' },
 ];
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export function defaultSettings() {
   return {
@@ -77,6 +79,25 @@ export function defaultSettings() {
       notifyMinutesBeforeSessionStart: 10,
       notifyDeadlineWarningHoursBefore: 24,
     },
+
+    // Préparation de colle : fenêtre de révision resserrée juste avant la
+    // colle (pas étalée depuis aujourd'hui comme un devoir normal).
+    colle: {
+      revisionLeadDaysMin: 1, // "la veille"
+      revisionLeadDaysMax: 2, // "l'avant-veille"
+      defaultDurationMinutes: 45,
+      extraMinutesPerExtraChapter: 20,
+    },
+
+    // Répétition espacée par chapitre : intervalles J+1/J+7/J+30 par défaut,
+    // allongés si "facile", raccourcis (révision supplémentaire) si "difficile".
+    spacedRepetition: {
+      baseIntervalsDays: [1, 7, 30],
+      defaultDurationMinutes: 20,
+      easyStretchFactor: 1.5,
+      hardShrinkFactor: 0.4,
+      windowSlackDays: 2,
+    },
   };
 }
 
@@ -104,6 +125,8 @@ export function createTask(partial) {
     difficulty: null, // optionnel, informatif uniquement (non utilisé par le moteur v1)
     manualSessions: null, // null => découpage automatique
     linkedEventId: null,
+    chapterId: null, // pour 'revision_espacee' : le chapitre concerné
+    linkedChapterIds: [], // pour 'preparation_colle' auto-généré : chapitres fusionnés
     status: 'a_faire',
     notes: '',
     createdAt: now,
@@ -153,7 +176,50 @@ export function createOneOffEvent(partial) {
     endTime: '09:00',
     subject: null,
     linkedTaskId: null,
-    createdVia: 'planned', // 'planned' | 'adhoc'
+    chapterIds: [], // pour category 'colle' : chapitres couverts
+    templateId: null, // pour une colle récurrente : la RecurringColleTemplate d'origine
+    createdVia: 'planned', // 'planned' | 'adhoc' | 'recurring_colle_template'
+    ...partial,
+  };
+}
+
+/**
+ * Un chapitre vu en cours, suivi en répétition espacée (J+1/J+7/J+30 par
+ * défaut). `stage` indexe settings.spacedRepetition.baseIntervalsDays.
+ */
+export function createChapter(partial) {
+  const now = Date.now();
+  return {
+    id: makeId(),
+    subject: 'maths',
+    title: '',
+    dateSeen: null,
+    status: 'active', // 'active' | 'maitrise' | 'archive'
+    stage: 0,
+    nextReviewDate: null,
+    pendingTaskId: null, // tâche revision_espacee en attente, ou null si fusionnée/aucune
+    fusedIntoEventId: null, // colle qui absorbe la révision en cours, ou null
+    history: [], // [{ date, stage, difficulty, fusedWithColle }]
+    createdAt: now,
+    updatedAt: now,
+    ...partial,
+  };
+}
+
+/**
+ * Un créneau de colle récurrent (même jour/heure chaque semaine) : le
+ * contenu (chapitres) change chaque semaine sur l'occurrence générée
+ * automatiquement (OneOffEvent avec templateId = cet id).
+ */
+export function createRecurringColleTemplate(partial) {
+  return {
+    id: makeId(),
+    subject: 'maths',
+    label: '',
+    dayOfWeek: 1, // 0=dimanche ... 6=samedi
+    startTime: '14:00',
+    endTime: '14:20',
+    active: true,
     ...partial,
   };
 }
@@ -166,5 +232,7 @@ export function emptyStore() {
     sessions: [],
     weeklyConstraints: [],
     oneOffEvents: [],
+    chapters: [],
+    recurringColleTemplates: [],
   };
 }

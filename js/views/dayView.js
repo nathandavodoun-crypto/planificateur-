@@ -5,6 +5,17 @@
 import { getState, getWarnings, setSessionStatus } from '../store.js';
 import { todayISO, addDaysISO, formatDateFR, combineDateTime } from '../utils/date.js';
 
+const TYPE_BADGES = {
+  preparation_colle: '🎤',
+  revision_espacee: '🔁',
+  revision_ds: '📘',
+};
+const TYPE_TITLES = {
+  preparation_colle: 'Préparation de colle',
+  revision_espacee: 'Révision espacée',
+  revision_ds: 'Révision de DS',
+};
+
 // Jour actuellement affiché — conservé au niveau du module (pas du rendu) pour
 // survivre aux re-rendus déclenchés par le store sans revenir à "aujourd'hui"
 // à chaque changement.
@@ -43,7 +54,12 @@ function dayBlocks(dateISO, state) {
   }
   for (const ev of state.oneOffEvents) {
     if (ev.date === dateISO) {
-      blocks.push({ start: ev.startTime, end: ev.endTime, label: `${CATEGORY_LABELS[ev.category]} — ${ev.label}` });
+      let label = `${CATEGORY_LABELS[ev.category]} — ${ev.label}`;
+      if (ev.category === 'colle' && ev.chapterIds?.length) {
+        const titles = ev.chapterIds.map((id) => state.chapters.find((c) => c.id === id)?.title).filter(Boolean);
+        if (titles.length) label += ` (${titles.join(', ')})`;
+      }
+      blocks.push({ start: ev.startTime, end: ev.endTime, label });
     }
   }
   return blocks;
@@ -148,9 +164,13 @@ function renderSessionItem(session, task, settings, now) {
   time.className = 'time';
   time.textContent = `${session.startTime}–${session.endTime}`;
 
+  const badge = task ? TYPE_BADGES[task.type] : null;
+
   const content = document.createElement('div');
   content.className = 'content';
-  content.innerHTML = `<span class="subject-pill" style="background:${subj.color}">${escapeHtml(subj.label)}</span>${escapeHtml(task ? task.title : '')}`;
+  content.innerHTML = `<span class="subject-pill" style="background:${subj.color}">${escapeHtml(subj.label)}</span>${
+    badge ? `<span class="type-badge" title="${escapeHtml(TYPE_TITLES[task.type] || '')}">${badge}</span> ` : ''
+  }${escapeHtml(task ? task.title : '')}`;
 
   const actions = document.createElement('div');
   actions.className = 'actions';
@@ -162,7 +182,15 @@ function renderSessionItem(session, task, settings, now) {
     doneBtn.className = 'btn-done';
     doneBtn.textContent = '✓';
     doneBtn.title = 'Marquer comme fait';
-    doneBtn.addEventListener('click', () => setSessionStatus(session.id, 'terminee'));
+    doneBtn.addEventListener('click', async () => {
+      const chaptersToRate = chaptersNeedingRating(session, task, getState());
+      if (chaptersToRate.length === 0) {
+        setSessionStatus(session.id, 'terminee');
+        return;
+      }
+      const difficultyByChapter = await askDifficulties(chaptersToRate);
+      setSessionStatus(session.id, 'terminee', difficultyByChapter);
+    });
     actions.appendChild(doneBtn);
 
     // "Non faite" n'a un sens réel que pour une session déjà passée : pour
@@ -187,4 +215,61 @@ function renderSessionItem(session, task, settings, now) {
 
   el.append(time, content, actions);
   return el;
+}
+
+// ---------------------------------------------------------------------------
+// Facile / difficile — demandé une fois par chapitre concerné, uniquement
+// quand la session cochée termine entièrement la tâche (dernière session
+// d'une révision espacée, ou d'une préparation de colle fusionnée).
+// ---------------------------------------------------------------------------
+
+function chaptersNeedingRating(session, task, state) {
+  if (!task) return [];
+  const doneMinutesAfter = state.sessions
+    .filter((s) => s.taskId === task.id && (s.status === 'terminee' || s.id === session.id))
+    .reduce((sum, s) => sum + s.durationMinutes, 0);
+  if (doneMinutesAfter < task.estimatedDurationMinutes) return []; // pas encore la dernière session
+
+  if (task.type === 'revision_espacee' && task.chapterId) {
+    const ch = state.chapters.find((c) => c.id === task.chapterId);
+    return ch && ch.status === 'active' ? [ch] : [];
+  }
+  if (task.type === 'preparation_colle' && task.linkedChapterIds?.length) {
+    return task.linkedChapterIds
+      .map((id) => state.chapters.find((c) => c.id === id))
+      .filter((ch) => ch && ch.status === 'active' && ch.fusedIntoEventId === task.linkedEventId);
+  }
+  return [];
+}
+
+function askDifficulty(chapterTitle) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal-card">
+        <p>« ${escapeHtml(chapterTitle)} » — comment ça s'est passé ?</p>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" data-choice="difficile">Difficile</button>
+          <button type="button" class="btn-primary" data-choice="facile">Facile</button>
+        </div>
+      </div>
+    `;
+    overlay.addEventListener('click', (e) => {
+      const choice = e.target.dataset && e.target.dataset.choice;
+      if (choice) {
+        overlay.remove();
+        resolve(choice);
+      }
+    });
+    document.body.appendChild(overlay);
+  });
+}
+
+async function askDifficulties(chapters) {
+  const result = {};
+  for (const ch of chapters) {
+    result[ch.id] = await askDifficulty(ch.title);
+  }
+  return result;
 }

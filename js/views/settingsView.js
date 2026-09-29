@@ -9,6 +9,7 @@ import {
   deleteWeeklyConstraint,
   addOneOffEvent,
   deleteOneOffEvent,
+  deactivateRecurringColleTemplate,
   exportBackup,
   importBackup,
 } from '../store.js';
@@ -39,6 +40,7 @@ export function renderSettingsView(container) {
   wrapper.className = 'view view-settings';
 
   wrapper.appendChild(renderGeneralSection(state));
+  wrapper.appendChild(renderColleAndRepetitionSection(state));
   wrapper.appendChild(renderConstraintsSection(state));
   wrapper.appendChild(renderEventsSection(state));
   wrapper.appendChild(renderBackupSection());
@@ -97,6 +99,98 @@ function renderGeneralSection(state) {
   });
 
   section.appendChild(form);
+  return section;
+}
+
+// ---------------------------------------------------------------------------
+
+function renderColleAndRepetitionSection(state) {
+  const section = document.createElement('div');
+  section.className = 'section';
+  section.innerHTML = '<h2>Colles et répétition espacée</h2>';
+
+  const form = document.createElement('form');
+  form.className = 'settings-form';
+  const c = state.settings.colle;
+  const sr = state.settings.spacedRepetition;
+  form.innerHTML = `
+    <div class="settings-grid">
+      <label>Révision colle : au plus tôt (jours avant)
+        <input type="number" name="revisionLeadDaysMax" min="0" step="1" value="${c.revisionLeadDaysMax}" />
+      </label>
+      <label>Révision colle : au plus tard (jours avant)
+        <input type="number" name="revisionLeadDaysMin" min="0" step="1" value="${c.revisionLeadDaysMin}" />
+      </label>
+      <label>Durée de révision de colle par défaut (min)
+        <input type="number" name="colleDefaultDurationMinutes" min="10" step="5" value="${c.defaultDurationMinutes}" />
+      </label>
+      <label>Minutes en plus par chapitre supplémentaire
+        <input type="number" name="extraMinutesPerExtraChapter" min="0" step="5" value="${c.extraMinutesPerExtraChapter}" />
+      </label>
+      <label>Intervalles de répétition espacée (jours, séparés par virgules)
+        <input type="text" name="baseIntervalsDays" value="${sr.baseIntervalsDays.join(', ')}" />
+      </label>
+      <label>Durée d'une révision espacée (min)
+        <input type="number" name="spacedDefaultDurationMinutes" min="5" step="5" value="${sr.defaultDurationMinutes}" />
+      </label>
+    </div>
+    <button type="submit" class="btn-primary">Enregistrer</button>
+  `;
+
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    const intervals = data
+      .get('baseIntervalsDays')
+      .split(',')
+      .map((s) => parseInt(s.trim(), 10))
+      .filter((n) => Number.isFinite(n) && n > 0);
+
+    updateSettings({
+      colle: {
+        ...state.settings.colle,
+        revisionLeadDaysMin: Number(data.get('revisionLeadDaysMin')),
+        revisionLeadDaysMax: Number(data.get('revisionLeadDaysMax')),
+        defaultDurationMinutes: Number(data.get('colleDefaultDurationMinutes')),
+        extraMinutesPerExtraChapter: Number(data.get('extraMinutesPerExtraChapter')),
+      },
+      spacedRepetition: {
+        ...state.settings.spacedRepetition,
+        baseIntervalsDays: intervals.length ? intervals : state.settings.spacedRepetition.baseIntervalsDays,
+        defaultDurationMinutes: Number(data.get('spacedDefaultDurationMinutes')),
+      },
+    });
+  });
+
+  section.appendChild(form);
+
+  const activeTemplates = state.recurringColleTemplates.filter((t) => t.active);
+  if (activeTemplates.length > 0) {
+    const listTitle = document.createElement('p');
+    listTitle.className = 'notice';
+    listTitle.textContent = 'Colles récurrentes actives :';
+    section.appendChild(listTitle);
+
+    for (const tmpl of activeTemplates) {
+      const subj = (state.settings.subjects || []).find((s) => s.id === tmpl.subject);
+      const dayLabel = DAYS_DISPLAY.find((d) => d.index === tmpl.dayOfWeek)?.label || '';
+      const item = document.createElement('div');
+      item.className = 'list-item';
+      item.innerHTML = `
+        <div>
+          <strong>${escapeHtml(tmpl.label || 'Colle')}</strong>
+          <div class="meta">${escapeHtml(subj ? subj.label : tmpl.subject)} · ${dayLabel} ${tmpl.startTime}–${tmpl.endTime}</div>
+        </div>
+      `;
+      const delBtn = document.createElement('button');
+      delBtn.textContent = '✕';
+      delBtn.title = 'Arrêter cette colle récurrente';
+      delBtn.addEventListener('click', () => deactivateRecurringColleTemplate(tmpl.id));
+      item.appendChild(delBtn);
+      section.appendChild(item);
+    }
+  }
+
   return section;
 }
 

@@ -7,8 +7,18 @@
 // direct à getState() depuis une vue) afin que le recalcul du planning
 // (scheduler.js) soit systématiquement relancé après chaque changement.
 
-import { emptyStore, defaultSettings, createTask, createWeeklyConstraint, createOneOffEvent, SCHEMA_VERSION } from './models.js';
+import { emptyStore, defaultSettings, createTask, createWeeklyConstraint, createOneOffEvent, createChapter, createRecurringColleTemplate, SCHEMA_VERSION } from './models.js';
 import { recomputeSchedule } from './scheduler.js';
+import { addDaysISO } from './utils/date.js';
+import {
+  ensureRecurringColleInstances,
+  ensureSpacedRepetitionTasks,
+  setColleChapters as setColleChaptersImpl,
+  cascadeCleanupOneOffEvent,
+  deleteTaskCascade,
+  isTaskDone,
+  handleTaskCompletionSideEffects,
+} from './colleChapters.js';
 
 const STORAGE_KEY = 'planner:v1';
 
@@ -35,6 +45,8 @@ function loadRaw() {
     data.sessions = data.sessions || [];
     data.weeklyConstraints = data.weeklyConstraints || [];
     data.oneOffEvents = data.oneOffEvents || [];
+    data.chapters = data.chapters || [];
+    data.recurringColleTemplates = data.recurringColleTemplates || [];
     return data;
   } catch (e) {
     console.warn('Données locales illisibles, redémarrage avec un planning vide.', e);
@@ -55,7 +67,16 @@ function persist() {
 }
 
 function recompute() {
-  const result = recomputeSchedule(new Date(), state);
+  const now = new Date();
+  // Upserts idempotents : matérialisent ce qui doit exister de façon
+  // persistante (prochaine occurrence de colle récurrente, tâche de révision
+  // espacée en attente) AVANT le recalcul pur du planning — ces entités
+  // portent un état qui n'est pas dérivable de rien, contrairement aux
+  // sessions que recomputeSchedule jette et régénère à chaque appel.
+  ensureRecurringColleInstances(state, now);
+  ensureSpacedRepetitionTasks(state, now);
+
+  const result = recomputeSchedule(now, state);
   state.sessions = result.sessions;
   warnings = result.warnings;
 }
@@ -102,18 +123,36 @@ export function updateTask(id, changes) {
 }
 
 export function deleteTask(id) {
-  state.tasks = state.tasks.filter((t) => t.id !== id);
-  state.sessions = state.sessions.filter((s) => s.taskId !== id);
+  deleteTaskCascade(state, id); // libère aussi un éventuel chapitre fusionné
   commit();
 }
 
 // ---- Sessions -----------------------------------------------------------
 
-export function setSessionStatus(id, status) {
+/**
+ * @param {string} id
+ * @param {'planifiee'|'terminee'|'non_faite'} status
+ * @param {Record<string,'facile'|'difficile'>} [difficultyByChapter] — requis
+ *   uniquement si cette session complète une tâche de révision espacée ou de
+ *   préparation de colle fusionnée (voir handleTaskCompletionSideEffects).
+ */
+export function setSessionStatus(id, status, difficultyByChapter) {
   const session = state.sessions.find((s) => s.id === id);
   if (!session) return;
+  const task = state.tasks.find((t) => t.id === session.taskId);
+
+  const wasDone = task ? isTaskDone(state, task.id) : false;
   session.status = status;
   session.completedAt = status === 'terminee' ? Date.now() : null;
+  const isDoneNow = task ? isTaskDone(state, task.id) : false;
+
+  if (task && !wasDone && isDoneNow) {
+    task.status = 'termine';
+    handleTaskCompletionSideEffects(state, task, difficultyByChapter, new Date());
+  } else if (task && wasDone && !isDoneNow) {
+    task.status = 'en_cours'; // ré-ouverte (session repassée non faite après coup)
+  }
+
   commit();
 }
 
@@ -148,7 +187,71 @@ export function addOneOffEvent(partial) {
 }
 
 export function deleteOneOffEvent(id) {
+  const event = state.oneOffEvents.find((e) => e.id === id);
+  if (event) cascadeCleanupOneOffEvent(state, event); // libère les chapitres fusionnés, sa tâche liée
   state.oneOffEvents = state.oneOffEvents.filter((e) => e.id !== id);
+  commit();
+}
+
+/** Affecte des chapitres à une colle (crée/màj sa tâche de préparation, gère la fusion). */
+export function setColleChapters(eventId, chapterIds) {
+  setColleChaptersImpl(state, eventId, chapterIds, new Date());
+  commit();
+}
+
+// ---- Colles récurrentes ---------------------------------------------------
+
+export function addRecurringColleTemplate(partial) {
+  const template = createRecurringColleTemplate(partial);
+  state.recurringColleTemplates.push(template);
+  commit();
+  return template;
+}
+
+export function updateRecurringColleTemplate(id, changes) {
+  const template = state.recurringColleTemplates.find((t) => t.id === id);
+  if (!template) return;
+  Object.assign(template, changes);
+  commit();
+}
+
+// Jamais de suppression en dur (comme les contraintes récurrentes) : on
+// désactive seulement, pour ne pas faire disparaître rétroactivement une
+// colle déjà générée si l'emploi du temps change.
+export function deactivateRecurringColleTemplate(id) {
+  updateRecurringColleTemplate(id, { active: false });
+}
+
+// ---- Chapitres (répétition espacée) ---------------------------------------
+
+export function addChapter(partial) {
+  const chapter = createChapter(partial);
+  if (!chapter.nextReviewDate && chapter.dateSeen) {
+    // Première révision programmée à J + (premier intervalle réglé), ex. J+1.
+    const firstIntervalDays = state.settings.spacedRepetition.baseIntervalsDays[0] ?? 1;
+    chapter.nextReviewDate = addDaysISO(chapter.dateSeen, firstIntervalDays);
+  }
+  state.chapters.push(chapter);
+  commit();
+  return chapter;
+}
+
+export function updateChapter(id, changes) {
+  const chapter = state.chapters.find((c) => c.id === id);
+  if (!chapter) return;
+  Object.assign(chapter, changes, { updatedAt: Date.now() });
+  commit();
+}
+
+/** Arrête le suivi en répétition espacée sans effacer l'historique. */
+export function archiveChapter(id) {
+  const chapter = state.chapters.find((c) => c.id === id);
+  if (!chapter) return;
+  if (chapter.pendingTaskId) deleteTaskCascade(state, chapter.pendingTaskId);
+  chapter.status = 'archive';
+  chapter.nextReviewDate = null;
+  chapter.pendingTaskId = null;
+  chapter.updatedAt = Date.now();
   commit();
 }
 

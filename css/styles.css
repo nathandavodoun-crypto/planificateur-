@@ -352,6 +352,13 @@ input, select, textarea {
   flex-shrink: 0;
 }
 
+/* Un item avec plusieurs actions (ex. colle : modifier + supprimer) ne doit
+   pas peindre TOUS ses boutons en rouge "suppression" — seul .btn-delete
+   (ou l'absence de classe, cas simple) garde le rouge par défaut ci-dessus. */
+.colle-item .actions .btn-undo {
+  color: var(--text-muted);
+}
+
 .settings-grid {
   display: flex;
   flex-direction: column;
@@ -371,4 +378,79 @@ input, select, textarea {
   background: var(--bg);
   border-radius: 8px;
   padding: 10px 12px;
+}
+
+/* ---- Sélecteur d'onglets du formulaire d'ajout (Devoir/Colle/Chapitre) ---- */
+
+.form-tabs {
+  display: flex;
+  gap: 8px;
+  background: var(--bg);
+  border-radius: 10px;
+  padding: 4px;
+}
+
+.form-tab {
+  flex: 1;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.form-tab.active {
+  background: var(--surface);
+  color: var(--primary);
+}
+
+.checkbox-row {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px !important;
+}
+.checkbox-row input {
+  width: auto;
+}
+
+/* ---- Badge de type (devoir / colle / révision espacée) ---- */
+
+.type-badge {
+  margin-right: 4px;
+}
+
+/* ---- Choix facile/difficile après une révision --------------------------- */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 100;
+}
+
+.modal-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 20px;
+  max-width: 360px;
+  width: 100%;
+}
+.modal-card p {
+  margin: 0 0 16px;
+  font-size: 15px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+}
+.modal-actions button {
+  flex: 1;
 }
