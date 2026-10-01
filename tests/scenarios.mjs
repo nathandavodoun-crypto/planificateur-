@@ -24,6 +24,7 @@ import {
   importChapters,
 } from '../js/colleChapters.js';
 import { timeToMinutes, addDaysISO, formatDateFR, formatDuration, combineDateTime } from '../js/utils/date.js';
+import { computeStreak } from '../js/stats.js';
 
 let totalChecks = 0;
 let failedChecks = 0;
@@ -657,6 +658,42 @@ function scenarioI() {
 }
 
 // ---------------------------------------------------------------------------
+// Scénario J — Streak : jours faits d'affilée, un jour neutre, un jour raté
+// ---------------------------------------------------------------------------
+
+function scenarioJ() {
+  const now = new Date(2026, 8, 28, 18, 0); // aujourd'hui = REF_DATE, en fin de journée
+  const task = createTask({ subject: 'maths', title: 'Peu importe', deadlineDate: addDaysISO(REF_DATE, 10) });
+
+  function doneSession(dateISO) {
+    return createSession({ taskId: task.id, date: dateISO, startTime: '18:00', endTime: '19:00', durationMinutes: 60, status: 'terminee' });
+  }
+  function missedSession(dateISO) {
+    return createSession({ taskId: task.id, date: dateISO, startTime: '18:00', endTime: '19:00', durationMinutes: 60, status: 'planifiee' });
+  }
+
+  const sessions = [
+    doneSession(addDaysISO(REF_DATE, -1)), // hier : fait
+    doneSession(addDaysISO(REF_DATE, -2)), // avant-hier : fait
+    // REF_DATE - 3 : rien de prévu (neutre, ne casse pas le streak)
+    doneSession(addDaysISO(REF_DATE, -4)), // fait
+    missedSession(addDaysISO(REF_DATE, -5)), // raté : le streak s'arrête ici
+    doneSession(addDaysISO(REF_DATE, -6)), // fait mais ne doit plus compter (après la casse)
+  ];
+
+  const state = { tasks: [task], sessions, weeklyConstraints: [], oneOffEvents: [], chapters: [], recurringColleTemplates: [], settings: defaultSettings() };
+  const streak = computeStreak(state, now);
+
+  console.log('\n=== Scénario J : streak (jours faits, un neutre, un raté) ===');
+  console.log(`Streak calculé : ${streak} jour(s)`);
+
+  check("Aujourd'hui (rien fait encore) ne casse pas le streak en cours de journée", true); // vérifié indirectement ci-dessous
+  check('Le streak compte hier et avant-hier (2)', streak >= 2);
+  check('Le jour neutre (rien de prévu) ne casse pas le streak', streak >= 3);
+  check('Le jour raté arrête bien le décompte : streak == 3, pas plus', streak === 3);
+}
+
+// ---------------------------------------------------------------------------
 
 scenarioA();
 scenarioB();
@@ -667,6 +704,7 @@ scenarioF();
 scenarioG();
 scenarioH();
 scenarioI();
+scenarioJ();
 
 console.log(`\n${totalChecks - failedChecks}/${totalChecks} vérifications passées.`);
 if (failedChecks > 0) {

@@ -135,6 +135,17 @@ h1, h2, h3 {
   color: var(--text);
 }
 
+.streak-badge {
+  align-self: center;
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  border: 1px solid var(--warning-border);
+  border-radius: 999px;
+  padding: 4px 14px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .warning-banner {
   background: var(--warning-bg);
   border: 1px solid var(--warning-border);
@@ -313,6 +324,10 @@ input, select, textarea {
   cursor: pointer;
 }
 
+.btn-danger {
+  background: var(--danger);
+}
+
 .section {
   display: flex;
   flex-direction: column;
@@ -355,7 +370,8 @@ input, select, textarea {
 /* Un item avec plusieurs actions (ex. colle : modifier + supprimer) ne doit
    pas peindre TOUS ses boutons en rouge "suppression" — seul .btn-delete
    (ou l'absence de classe, cas simple) garde le rouge par défaut ci-dessus. */
-.colle-item .actions .btn-undo {
+.colle-item .actions .btn-undo,
+.task-item .actions .btn-undo {
   color: var(--text-muted);
 }
 
@@ -489,8 +505,146 @@ input, select, textarea {
 
 .modal-actions {
   display: flex;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 .modal-actions button {
-  flex: 1;
+  flex: 1 1 80px;
+  padding: 10px 6px;
+  font-size: 14px;
+}
+
+/* ---- Vue Semaine : grille façon calendrier ---- */
+
+.week-grid-scroll {
+  overflow: auto;
+  max-height: 70vh;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  -webkit-overflow-scrolling: touch;
+}
+
+.week-grid-inner {
+  display: flex;
+  flex-direction: column;
+  width: max-content;
+}
+
+.week-row {
+  display: flex;
+}
+
+.week-header-row {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.week-hours-col {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  width: 46px;
+  flex-shrink: 0;
+  background: var(--surface);
+}
+
+.week-day-header {
+  width: 112px;
+  flex-shrink: 0;
+  text-align: center;
+  padding: 8px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: capitalize;
+  border-left: 1px solid var(--border);
+}
+.week-day-header.is-today {
+  color: var(--primary);
+}
+
+.week-hour-label {
+  position: absolute;
+  left: 0;
+  right: 4px;
+  transform: translateY(-50%);
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.week-day-col {
+  width: 112px;
+  flex-shrink: 0;
+  position: relative;
+  border-left: 1px solid var(--border);
+}
+
+.week-block {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 10px;
+  line-height: 1.25;
+  padding: 2px 4px;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.week-block-fixed {
+  opacity: 0.6;
+}
+
+/* ---- Animations légères (jamais au détriment de prefers-reduced-motion) ---- */
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes view-enter {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .view {
+    animation: view-enter 0.22s ease;
+  }
+
+  @keyframes modal-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes modal-pop-in {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  .modal-overlay {
+    animation: modal-fade-in 0.15s ease;
+  }
+  .modal-card {
+    animation: modal-pop-in 0.18s ease;
+  }
+
+  .timeline-item,
+  .list-item,
+  .week-block {
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+
+  button {
+    transition: transform 0.1s ease;
+  }
+  button:active {
+    transform: scale(0.96);
+  }
+
+  @keyframes streak-pop {
+    from { transform: scale(0.85); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+  }
+  .streak-badge {
+    animation: streak-pop 0.3s ease;
+  }
 }

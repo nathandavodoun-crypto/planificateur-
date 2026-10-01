@@ -3,7 +3,7 @@
 // d'accueil"). Ne touche jamais aux données (elles vivent dans localStorage,
 // pas ici).
 
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v5';
 const CACHE_NAME = `planificateur-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
@@ -16,8 +16,11 @@ const PRECACHE_URLS = [
   './js/models.js',
   './js/scheduler.js',
   './js/colleChapters.js',
+  './js/notifications.js',
+  './js/stats.js',
   './js/utils/date.js',
   './js/views/dayView.js',
+  './js/views/weekView.js',
   './js/views/taskFormView.js',
   './js/views/taskListView.js',
   './js/views/settingsView.js',
@@ -30,6 +33,20 @@ const PRECACHE_URLS = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS)).then(() => self.skipWaiting())
+  );
+});
+
+// Tapoter une notification ramène au premier plan un onglet déjà ouvert de
+// l'app, ou en ouvre un nouveau sinon.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      for (const client of windowClients) {
+        if ('focus' in client) return client.focus();
+      }
+      if (clients.openWindow) return clients.openWindow('./');
+    })
   );
 });
 

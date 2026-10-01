@@ -1,7 +1,7 @@
 // Saisie rapide : devoir (< 15s), colle, ou chapitre — un sélecteur en haut
 // bascule entre les trois petits formulaires, sans changer d'onglet.
 
-import { getState, addTask, addOneOffEvent, addRecurringColleTemplate, addChapter, addChaptersBulk, setColleChapters } from '../store.js';
+import { getState, addTask, updateTask, addOneOffEvent, addRecurringColleTemplate, addChapter, addChaptersBulk, setColleChapters } from '../store.js';
 import { DEFAULT_DURATION_MINUTES_BY_TYPE, TASK_TYPE_LABELS } from '../models.js';
 import { todayISO } from '../utils/date.js';
 
@@ -27,6 +27,10 @@ function escapeHtml(str) {
 
 export function renderTaskFormView(container) {
   const state = getState();
+  const params = new URLSearchParams(location.hash.split('?')[1] || '');
+  const editId = params.get('edit');
+  const editingTask = editId ? state.tasks.find((t) => t.id === editId) : null;
+  if (editingTask) activeTab = 'devoir';
 
   const wrapper = document.createElement('div');
   wrapper.className = 'view view-task-form';
@@ -56,7 +60,7 @@ export function renderTaskFormView(container) {
   } else if (activeTab === 'chapitre') {
     renderChapitreForm(wrapper, state);
   } else {
-    renderDevoirForm(wrapper, state);
+    renderDevoirForm(wrapper, state, editingTask);
   }
 
   container.appendChild(wrapper);
@@ -66,17 +70,18 @@ export function renderTaskFormView(container) {
 // Devoir
 // ---------------------------------------------------------------------------
 
-function renderDevoirForm(wrapper, state) {
+function renderDevoirForm(wrapper, state, editingTask) {
   const title = document.createElement('h2');
-  title.textContent = 'Ajouter un devoir';
+  title.textContent = editingTask ? 'Modifier le devoir' : 'Ajouter un devoir';
   wrapper.appendChild(title);
 
+  const t = editingTask;
   const form = document.createElement('form');
   form.className = 'task-form';
   form.innerHTML = `
     <label>Matière
       <select name="subject">
-        ${state.settings.subjects.map((s) => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.label)}</option>`).join('')}
+        ${state.settings.subjects.map((s) => `<option value="${escapeHtml(s.id)}" ${t?.subject === s.id ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}
       </select>
     </label>
 
@@ -84,36 +89,36 @@ function renderDevoirForm(wrapper, state) {
       <select name="type">
         ${Object.entries(TASK_TYPE_LABELS)
           .filter(([id]) => id !== 'revision_espacee') // généré automatiquement, pas saisi à la main
-          .map(([id, label]) => `<option value="${id}">${escapeHtml(label)}</option>`)
+          .map(([id, label]) => `<option value="${id}" ${t?.type === id ? 'selected' : ''}>${escapeHtml(label)}</option>`)
           .join('')}
       </select>
     </label>
 
     <label>Titre (facultatif)
-      <input type="text" name="title" placeholder="ex. DM d'intégrales n°4" />
+      <input type="text" name="title" placeholder="ex. DM d'intégrales n°4" value="${escapeHtml(t?.title || '')}" />
     </label>
 
     <label>Date limite
-      <input type="date" name="deadlineDate" required min="${todayISO(new Date())}" />
+      <input type="date" name="deadlineDate" required min="${todayISO(new Date())}" value="${t?.deadlineDate || ''}" />
     </label>
 
     <label>Heure limite (facultatif)
-      <input type="time" name="deadlineTime" />
+      <input type="time" name="deadlineTime" value="${t?.deadlineTime || ''}" />
     </label>
 
     <label>Durée estimée (en minutes)
-      <input type="number" name="estimatedDurationMinutes" min="10" step="5" required />
+      <input type="number" name="estimatedDurationMinutes" min="10" step="5" required value="${t?.estimatedDurationMinutes ?? ''}" />
     </label>
 
     <label>Priorité
       <select name="priority">
-        <option value="1">Basse</option>
-        <option value="2" selected>Normale</option>
-        <option value="3">Haute</option>
+        <option value="1" ${t?.priority === 1 ? 'selected' : ''}>Basse</option>
+        <option value="2" ${!t || t.priority === 2 ? 'selected' : ''}>Normale</option>
+        <option value="3" ${t?.priority === 3 ? 'selected' : ''}>Haute</option>
       </select>
     </label>
 
-    <button type="submit" class="btn-primary">Ajouter au planning</button>
+    <button type="submit" class="btn-primary">${editingTask ? 'Enregistrer les modifications' : 'Ajouter au planning'}</button>
   `;
 
   const typeSelect = form.elements.type;
@@ -123,7 +128,7 @@ function renderDevoirForm(wrapper, state) {
     durationInput.value = DEFAULT_DURATION_MINUTES_BY_TYPE[typeSelect.value] ?? 60;
   }
   typeSelect.addEventListener('change', applyDefaultDuration);
-  applyDefaultDuration();
+  if (!editingTask) applyDefaultDuration(); // ne pas écraser une durée déjà saisie en édition
 
   form.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -134,7 +139,7 @@ function renderDevoirForm(wrapper, state) {
     const typeLabel = TASK_TYPE_LABELS[type];
     const rawTitle = data.get('title')?.trim();
 
-    addTask({
+    const payload = {
       subject,
       type,
       title: rawTitle || `${typeLabel} — ${subjectLabel}`,
@@ -142,11 +147,17 @@ function renderDevoirForm(wrapper, state) {
       deadlineTime: data.get('deadlineTime') || null,
       estimatedDurationMinutes: Number(data.get('estimatedDurationMinutes')),
       priority: Number(data.get('priority')),
-    });
+    };
 
-    // Retour direct sur la vue Jour : la meilleure confirmation, c'est de
-    // voir tout de suite où le devoir a été casé.
-    location.hash = '#/jour';
+    if (editingTask) {
+      updateTask(editingTask.id, payload);
+      location.hash = '#/devoirs';
+    } else {
+      addTask(payload);
+      // Retour direct sur la vue Jour : la meilleure confirmation, c'est de
+      // voir tout de suite où le devoir a été casé.
+      location.hash = '#/jour';
+    }
   });
 
   wrapper.appendChild(form);

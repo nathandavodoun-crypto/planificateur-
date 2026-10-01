@@ -14,6 +14,7 @@ import {
   importBackup,
 } from '../store.js';
 import { formatDateFR } from '../utils/date.js';
+import { isSupported as notificationsSupported, requestPermission as requestNotificationPermission } from '../notifications.js';
 
 const DAYS_DISPLAY = [
   { index: 1, label: 'Lun' },
@@ -40,6 +41,7 @@ export function renderSettingsView(container) {
   wrapper.className = 'view view-settings';
 
   wrapper.appendChild(renderGeneralSection(state));
+  wrapper.appendChild(renderNotificationsSection(state));
   wrapper.appendChild(renderColleAndRepetitionSection(state));
   wrapper.appendChild(renderSubjectsSection(state));
   wrapper.appendChild(renderConstraintsSection(state));
@@ -96,6 +98,75 @@ function renderGeneralSection(state) {
       dailyCapWeekdayMinutes: Number(data.get('dailyCapWeekdayMinutes')),
       dailyCapWeekendMinutes: Number(data.get('dailyCapWeekendMinutes')),
       safetyMarginDays: Number(data.get('safetyMarginDays')),
+    });
+  });
+
+  section.appendChild(form);
+  return section;
+}
+
+// ---------------------------------------------------------------------------
+
+function renderNotificationsSection(state) {
+  const section = document.createElement('div');
+  section.className = 'section';
+  section.innerHTML = '<h2>Notifications</h2>';
+
+  const n = state.settings.notifications;
+
+  const notice = document.createElement('p');
+  notice.className = 'notice';
+  notice.textContent =
+    "Sans serveur, aucune notification n'est garantie quand l'app est totalement fermée (téléphone ou ordinateur) — ça ne peut vérifier que pendant qu'elle est ouverte, ou dès que tu la rouvres. Sur ordinateur, un onglet ouvert en arrière-plan reste actif bien plus longtemps qu'un téléphone, donc c'est plus fiable tant que le navigateur tourne.";
+  section.appendChild(notice);
+
+  if (!notificationsSupported()) {
+    const unsupported = document.createElement('p');
+    unsupported.className = 'notice';
+    unsupported.textContent = "Ce navigateur ne supporte pas les notifications.";
+    section.appendChild(unsupported);
+    return section;
+  }
+
+  const form = document.createElement('form');
+  form.className = 'settings-form';
+  form.innerHTML = `
+    <label class="checkbox-row">
+      <input type="checkbox" name="enabled" ${n.enabled ? 'checked' : ''} />
+      Activer les notifications
+    </label>
+    <div class="settings-grid">
+      <label>Rappel avant le début d'une session (min)
+        <input type="number" name="notifyMinutesBeforeSessionStart" min="0" step="5" value="${n.notifyMinutesBeforeSessionStart}" />
+      </label>
+      <label>Alerte échéance proche (heures avant)
+        <input type="number" name="notifyDeadlineWarningHoursBefore" min="1" step="1" value="${n.notifyDeadlineWarningHoursBefore}" />
+      </label>
+    </div>
+    <button type="submit" class="btn-primary">Enregistrer</button>
+  `;
+
+  const enabledCheckbox = form.elements.enabled;
+  enabledCheckbox.addEventListener('change', async () => {
+    if (enabledCheckbox.checked) {
+      const permission = await requestNotificationPermission();
+      if (permission !== 'granted') {
+        alert("Les notifications ont été refusées (ou le navigateur n'a pas répondu) — vérifie les réglages de notifications de ton navigateur/téléphone pour ce site.");
+        enabledCheckbox.checked = false;
+      }
+    }
+  });
+
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    updateSettings({
+      notifications: {
+        ...state.settings.notifications,
+        enabled: data.get('enabled') === 'on',
+        notifyMinutesBeforeSessionStart: Number(data.get('notifyMinutesBeforeSessionStart')),
+        notifyDeadlineWarningHoursBefore: Number(data.get('notifyDeadlineWarningHoursBefore')),
+      },
     });
   });
 

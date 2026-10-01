@@ -4,6 +4,7 @@
 
 import { getState, getWarnings, setSessionStatus } from '../store.js';
 import { todayISO, addDaysISO, formatDateFR, combineDateTime } from '../utils/date.js';
+import { computeStreak } from '../stats.js';
 
 const TYPE_BADGES = {
   preparation_colle: '🎤',
@@ -104,6 +105,14 @@ export function renderDayView(container) {
 
   dateNav.append(prevBtn, dateLabel, nextBtn);
   wrapper.appendChild(dateNav);
+
+  const streak = computeStreak(state, now);
+  if (streak > 0) {
+    const streakBadge = document.createElement('div');
+    streakBadge.className = 'streak-badge';
+    streakBadge.textContent = `🔥 ${streak} jour${streak > 1 ? 's' : ''} de suite`;
+    wrapper.appendChild(streakBadge);
+  }
 
   function rerender() {
     container.innerHTML = '';
