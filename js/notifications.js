@@ -24,8 +24,20 @@ export async function requestPermission() {
   return Notification.requestPermission();
 }
 
+/**
+ * Bouton "tester" dans les réglages : vérifie tout de suite si une
+ * notification s'affiche vraiment, en remontant une erreur précise sinon
+ * (contrairement aux vérifications périodiques, qui échouent en silence).
+ */
+export async function sendTestNotification() {
+  await showNotification('Test du planificateur', 'Si tu vois ceci, les notifications fonctionnent sur cet appareil.');
+}
+
 async function showNotification(title, body) {
-  if (!isSupported() || Notification.permission !== 'granted') return;
+  if (!isSupported()) throw new Error("Ce navigateur ne supporte pas l'API Notification.");
+  if (Notification.permission !== 'granted') {
+    throw new Error(`Permission non accordée (statut actuel : « ${Notification.permission} »).`);
+  }
   const options = { body, icon: './icons/icon-192.png', badge: './icons/icon-192.png' };
   // registration.showNotification() est nécessaire sur Android/Chrome (le
   // constructeur Notification direct y est souvent indisponible) ; on
@@ -39,11 +51,7 @@ async function showNotification(title, body) {
       console.warn('Notification via service worker impossible, repli direct :', e);
     }
   }
-  try {
-    new Notification(title, options);
-  } catch (e) {
-    console.warn('Notification impossible :', e);
-  }
+  new Notification(title, options); // si ça échoue ici, l'erreur remonte à l'appelant
 }
 
 function checkDueSoon(state, now) {
@@ -55,7 +63,9 @@ function checkDueSoon(state, now) {
     const minutesUntil = minutesBetween(now, start);
     if (minutesUntil >= 0 && minutesUntil <= cfg.notifyMinutesBeforeSessionStart) {
       const task = state.tasks.find((t) => t.id === session.taskId);
-      showNotification('Session à venir', `${task ? task.title : 'Une session'} commence à ${session.startTime}`);
+      showNotification('Session à venir', `${task ? task.title : 'Une session'} commence à ${session.startTime}`).catch((e) =>
+        console.warn('Notification "session à venir" impossible :', e)
+      );
       notifiedSessionIds.add(session.id);
     }
   }
@@ -77,7 +87,9 @@ function checkDeadlinesApproaching(state, now) {
     const hoursUntil = minutesBetween(now, deadlineInstant) / 60;
     const key = `${task.id}:${todayIso}`;
     if (hoursUntil >= 0 && hoursUntil <= cfg.notifyDeadlineWarningHoursBefore && !notifiedTaskDeadlineDays.has(key)) {
-      showNotification('Échéance proche', `« ${task.title} » n'est pas terminé, échéance dans moins de ${Math.ceil(hoursUntil)} h.`);
+      showNotification('Échéance proche', `« ${task.title} » n'est pas terminé, échéance dans moins de ${Math.ceil(hoursUntil)} h.`).catch((e) =>
+        console.warn('Notification "échéance proche" impossible :', e)
+      );
       notifiedTaskDeadlineDays.add(key);
     }
   }

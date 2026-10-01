@@ -14,7 +14,11 @@ import {
   importBackup,
 } from '../store.js';
 import { formatDateFR } from '../utils/date.js';
-import { isSupported as notificationsSupported, requestPermission as requestNotificationPermission } from '../notifications.js';
+import {
+  isSupported as notificationsSupported,
+  requestPermission as requestNotificationPermission,
+  sendTestNotification,
+} from '../notifications.js';
 
 const DAYS_DISPLAY = [
   { index: 1, label: 'Lun' },
@@ -124,10 +128,24 @@ function renderNotificationsSection(state) {
   if (!notificationsSupported()) {
     const unsupported = document.createElement('p');
     unsupported.className = 'notice';
-    unsupported.textContent = "Ce navigateur ne supporte pas les notifications.";
+    unsupported.textContent =
+      "Ce navigateur ne supporte pas l'API de notifications ici. Sur iPhone, c'est normal dans un onglet Safari classique : installe d'abord l'app sur l'écran d'accueil (voir les instructions données) et ouvre-la DEPUIS son icône, pas depuis Safari — les notifications n'existent que dans ce mode-là sur iOS.";
     section.appendChild(unsupported);
     return section;
   }
+
+  const PERMISSION_LABELS = {
+    granted: 'autorisées ✓',
+    denied: "refusées — il faut les réactiver depuis les réglages de notifications de ton téléphone/navigateur pour cette app, l'app elle-même ne peut plus re-demander",
+    default: 'pas encore demandées',
+  };
+  const statusLine = document.createElement('p');
+  statusLine.className = 'notice';
+  function refreshStatus() {
+    statusLine.textContent = `Statut actuel : ${PERMISSION_LABELS[Notification.permission] || Notification.permission}.`;
+  }
+  refreshStatus();
+  section.appendChild(statusLine);
 
   const form = document.createElement('form');
   form.className = 'settings-form';
@@ -148,13 +166,40 @@ function renderNotificationsSection(state) {
   `;
 
   const enabledCheckbox = form.elements.enabled;
+
+  // Activer la case déclenche ET persiste tout de suite (pas besoin d'un
+  // second clic sur "Enregistrer" ensuite, pour éviter l'impression que
+  // "rien ne s'est passé" une fois la permission accordée).
   enabledCheckbox.addEventListener('change', async () => {
     if (enabledCheckbox.checked) {
-      const permission = await requestNotificationPermission();
-      if (permission !== 'granted') {
-        alert("Les notifications ont été refusées (ou le navigateur n'a pas répondu) — vérifie les réglages de notifications de ton navigateur/téléphone pour ce site.");
+      try {
+        const permission = await requestNotificationPermission();
+        refreshStatus();
+        if (permission === 'granted') {
+          updateSettings({ notifications: { ...state.settings.notifications, enabled: true } });
+        } else {
+          alert(`Les notifications n'ont pas été autorisées (statut renvoyé : « ${permission} »).`);
+          enabledCheckbox.checked = false;
+        }
+      } catch (e) {
+        alert(`La demande d'autorisation a échoué : ${e.message}`);
         enabledCheckbox.checked = false;
+        refreshStatus();
       }
+    } else {
+      updateSettings({ notifications: { ...state.settings.notifications, enabled: false } });
+    }
+  });
+
+  const testBtn = document.createElement('button');
+  testBtn.type = 'button';
+  testBtn.className = 'btn-secondary';
+  testBtn.textContent = 'Envoyer une notification de test';
+  testBtn.addEventListener('click', async () => {
+    try {
+      await sendTestNotification();
+    } catch (e) {
+      alert(`Impossible d'envoyer une notification de test : ${e.message}`);
     }
   });
 
@@ -164,13 +209,14 @@ function renderNotificationsSection(state) {
     updateSettings({
       notifications: {
         ...state.settings.notifications,
-        enabled: data.get('enabled') === 'on',
+        enabled: enabledCheckbox.checked,
         notifyMinutesBeforeSessionStart: Number(data.get('notifyMinutesBeforeSessionStart')),
         notifyDeadlineWarningHoursBefore: Number(data.get('notifyDeadlineWarningHoursBefore')),
       },
     });
   });
 
+  form.appendChild(testBtn);
   section.appendChild(form);
   return section;
 }
