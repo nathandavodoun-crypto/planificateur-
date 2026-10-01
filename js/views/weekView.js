@@ -145,6 +145,7 @@ export function renderWeekView(container) {
   }
   bodyRow.appendChild(hoursCol);
 
+  let blockStagger = 0;
   for (const dateISO of dayDates) {
     const col = document.createElement('div');
     col.className = 'week-day-col';
@@ -159,6 +160,7 @@ export function renderWeekView(container) {
       block.style.top = (startMin - dayStartMin) * PX_PER_MINUTE + 'px';
       block.style.height = Math.max(16, (endMin - startMin) * PX_PER_MINUTE) + 'px';
       block.style.background = item.color;
+      block.style.setProperty('--stagger', blockStagger++);
       block.textContent = item.label;
       block.addEventListener('click', () => openDetailCard(item, state));
       col.appendChild(block);

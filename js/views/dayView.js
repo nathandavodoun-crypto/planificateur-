@@ -149,7 +149,10 @@ export function renderDayView(container) {
     empty.textContent = 'Rien de prévu ce jour-là.';
     timeline.appendChild(empty);
   } else {
-    for (const item of items) timeline.appendChild(item.node);
+    items.forEach((item, i) => {
+      item.node.style.setProperty('--stagger', i);
+      timeline.appendChild(item.node);
+    });
   }
   wrapper.appendChild(timeline);
 

@@ -95,13 +95,14 @@ function renderTasksSection(state) {
     section.appendChild(empty);
   }
 
-  for (const task of tasks) {
+  tasks.forEach((task, i) => {
     const { label: statusLabel, remaining } = computeStatus(task, state.sessions);
     const subj = subjectMeta(task.subject, state.settings);
 
     const item = document.createElement('div');
     item.className = 'list-item task-item';
     item.style.borderLeft = `4px solid ${subj.color}`;
+    item.style.setProperty('--stagger', i);
     if (statusLabel === 'Terminé') item.classList.add('is-done');
 
     const info = document.createElement('div');
@@ -140,7 +141,7 @@ function renderTasksSection(state) {
     actions.append(editBtn, delBtn);
     item.append(info, actions);
     section.appendChild(item);
-  }
+  });
 
   return section;
 }
@@ -166,7 +167,7 @@ function renderCollesSection(state, onChange) {
     section.appendChild(empty);
   }
 
-  for (const event of colles) {
+  colles.forEach((event, i) => {
     const subj = subjectMeta(event.subject, state.settings);
     const chapterTitles = (event.chapterIds || [])
       .map((id) => state.chapters.find((c) => c.id === id)?.title)
@@ -175,6 +176,7 @@ function renderCollesSection(state, onChange) {
     const item = document.createElement('div');
     item.className = 'list-item colle-item';
     item.style.borderLeft = `4px solid ${subj.color}`;
+    item.style.setProperty('--stagger', i);
     item.innerHTML = `
       <div>
         <div>
@@ -212,7 +214,7 @@ function renderCollesSection(state, onChange) {
     actions.append(editBtn, delBtn);
     item.appendChild(actions);
     section.appendChild(item);
-  }
+  });
 
   return section;
 }
@@ -291,6 +293,7 @@ function renderChaptersSection(state) {
     bySubject.get(c.subject).push(c);
   }
 
+  let chapterStagger = 0;
   for (const [subjectId, list] of bySubject) {
     const subj = subjectMeta(subjectId, state.settings);
     const subjHeading = document.createElement('div');
@@ -302,6 +305,7 @@ function renderChaptersSection(state) {
       const item = document.createElement('div');
       item.className = 'list-item';
       item.style.borderLeft = `4px solid ${subj.color}`;
+      item.style.setProperty('--stagger', chapterStagger++);
       const nextInfo = chapter.status === 'maitrise' || chapter.fusedIntoEventId
         ? stageLabel(chapter, state.settings)
         : `${stageLabel(chapter, state.settings)} · prochaine révision ${chapter.nextReviewDate ? formatDateFR(chapter.nextReviewDate) : '—'}`;
