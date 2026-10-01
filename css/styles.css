@@ -402,6 +402,15 @@ input, select, textarea {
   background: var(--bg);
   border-radius: 8px;
   padding: 10px 12px;
+  white-space: pre-line;
+}
+.notice code {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 12px;
+  color: var(--text);
 }
 
 /* ---- Sélecteur d'onglets du formulaire d'ajout (Devoir/Colle/Chapitre) ---- */

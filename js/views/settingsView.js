@@ -43,6 +43,7 @@ export function renderSettingsView(container) {
   wrapper.appendChild(renderGeneralSection(state));
   wrapper.appendChild(renderNotificationsSection(state));
   wrapper.appendChild(renderColleAndRepetitionSection(state));
+  wrapper.appendChild(renderAnkiSection());
   wrapper.appendChild(renderSubjectsSection(state));
   wrapper.appendChild(renderConstraintsSection(state));
   wrapper.appendChild(renderEventsSection(state));
@@ -271,6 +272,28 @@ function renderColleAndRepetitionSection(state) {
     }
   }
 
+  return section;
+}
+
+// ---------------------------------------------------------------------------
+
+function renderAnkiSection() {
+  const section = document.createElement('div');
+  section.className = 'section';
+  section.innerHTML = `
+    <h2>Lien avec Anki</h2>
+    <p class="notice">
+      Depuis "Ajouter → Chapitre → Importer plusieurs chapitres d'un coup", un bouton permet de récupérer les noms de tes paquets Anki, pour ne pas avoir à les retaper. Ça ne marche que depuis cet ordinateur, avec Anki Desktop ouvert — AnkiDroid (téléphone) et AnkiWeb ne permettent pas cette liaison.
+      Seuls les <strong>noms</strong> des paquets sont récupérés — le planificateur garde son propre système de répétition espacée (J+1/J+7/J+30), indépendant de celui d'Anki.
+    </p>
+    <p class="notice">
+      À faire une seule fois dans Anki :
+      1) Outils → Modules complémentaires → installer "AnkiConnect" (code 2055492159) si ce n'est pas déjà fait, puis redémarrer Anki.
+      2) Outils → Modules complémentaires → sélectionner AnkiConnect → Configuration.
+      3) Dans le champ <code>webCorsOriginList</code>, ajouter cette adresse : <code>https://nathandavodoun-crypto.github.io</code>
+      4) Enregistrer, puis redémarrer Anki.
+    </p>
+  `;
   return section;
 }
 

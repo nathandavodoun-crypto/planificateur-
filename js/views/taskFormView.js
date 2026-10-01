@@ -4,6 +4,7 @@
 import { getState, addTask, updateTask, addOneOffEvent, addRecurringColleTemplate, addChapter, addChaptersBulk, setColleChapters } from '../store.js';
 import { DEFAULT_DURATION_MINUTES_BY_TYPE, TASK_TYPE_LABELS } from '../models.js';
 import { todayISO } from '../utils/date.js';
+import { fetchDeckNames, deckNameToChapter } from '../ankiConnect.js';
 
 const DAYS_OPTIONS = [
   { index: 1, label: 'Lundi' },
@@ -423,12 +424,69 @@ function renderChapitreBulkForm(wrapper, state) {
   addRowBtn.textContent = '+ Ajouter une ligne';
   addRowBtn.addEventListener('click', () => addRow());
 
+  const ankiNotice = document.createElement('p');
+  ankiNotice.className = 'notice';
+  ankiNotice.textContent =
+    "Marche uniquement depuis cet ordinateur, avec Anki Desktop ouvert et l'extension AnkiConnect installée (voir Réglages pour la configurer une fois).";
+
+  const ankiBtn = document.createElement('button');
+  ankiBtn.type = 'button';
+  ankiBtn.className = 'btn-secondary';
+  ankiBtn.textContent = '📥 Importer depuis Anki';
+
+  const ankiStatus = document.createElement('div');
+
+  ankiBtn.addEventListener('click', async () => {
+    ankiBtn.disabled = true;
+    ankiStatus.innerHTML = '<p class="notice">Connexion à Anki…</p>';
+    try {
+      const deckNames = await fetchDeckNames();
+      if (deckNames.length === 0) {
+        ankiStatus.innerHTML = '<p class="notice">Aucun paquet trouvé dans Anki (à part "Default").</p>';
+        return;
+      }
+      renderDeckPicker(deckNames);
+    } catch (e) {
+      ankiStatus.innerHTML = `<p class="notice">${escapeHtml(e.message)}</p>`;
+    } finally {
+      ankiBtn.disabled = false;
+    }
+  });
+
+  function renderDeckPicker(deckNames) {
+    ankiStatus.innerHTML =
+      '<p class="notice">Paquets trouvés — coche ceux à suivre ici (tu pourras ajuster matière/date avant d\'importer) :</p><div class="days-picker" data-anki-decks></div>';
+    const picker = ankiStatus.querySelector('[data-anki-decks]');
+    for (const name of deckNames) {
+      const label = document.createElement('label');
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.value = name;
+      label.append(checkbox, document.createTextNode(name));
+      picker.appendChild(label);
+    }
+
+    const importBtn = document.createElement('button');
+    importBtn.type = 'button';
+    importBtn.className = 'btn-secondary';
+    importBtn.textContent = 'Ajouter les paquets cochés';
+    importBtn.addEventListener('click', () => {
+      const checked = [...picker.querySelectorAll('input:checked')].map((el) => el.value);
+      for (const deckName of checked) {
+        const { subject, title } = deckNameToChapter(deckName, state.settings.subjects);
+        addRow({ subject, title, dateSeen: today });
+      }
+      ankiStatus.innerHTML = '';
+    });
+    ankiStatus.appendChild(importBtn);
+  }
+
   const submitBtn = document.createElement('button');
   submitBtn.type = 'submit';
   submitBtn.className = 'btn-primary';
   submitBtn.textContent = 'Importer tous les chapitres';
 
-  form.append(rowsContainer, addRowBtn, submitBtn);
+  form.append(rowsContainer, addRowBtn, ankiNotice, ankiBtn, ankiStatus, submitBtn);
 
   form.addEventListener('submit', (event) => {
     event.preventDefault();
