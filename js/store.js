@@ -7,9 +7,8 @@
 // direct à getState() depuis une vue) afin que le recalcul du planning
 // (scheduler.js) soit systématiquement relancé après chaque changement.
 
-import { emptyStore, defaultSettings, createTask, createWeeklyConstraint, createOneOffEvent, createChapter, createRecurringColleTemplate, SCHEMA_VERSION } from './models.js';
+import { emptyStore, defaultSettings, createTask, createWeeklyConstraint, createOneOffEvent, createRecurringColleTemplate, SCHEMA_VERSION } from './models.js';
 import { recomputeSchedule } from './scheduler.js';
-import { addDaysISO } from './utils/date.js';
 import {
   ensureRecurringColleInstances,
   ensureSpacedRepetitionTasks,
@@ -18,6 +17,7 @@ import {
   deleteTaskCascade,
   isTaskDone,
   handleTaskCompletionSideEffects,
+  importChapters,
 } from './colleChapters.js';
 
 const STORAGE_KEY = 'planner:v1';
@@ -225,15 +225,24 @@ export function deactivateRecurringColleTemplate(id) {
 // ---- Chapitres (répétition espacée) ---------------------------------------
 
 export function addChapter(partial) {
-  const chapter = createChapter(partial);
-  if (!chapter.nextReviewDate && chapter.dateSeen) {
-    // Première révision programmée à J + (premier intervalle réglé), ex. J+1.
-    const firstIntervalDays = state.settings.spacedRepetition.baseIntervalsDays[0] ?? 1;
-    chapter.nextReviewDate = addDaysISO(chapter.dateSeen, firstIntervalDays);
-  }
-  state.chapters.push(chapter);
+  const [chapter] = importChapters(
+    state,
+    [{ subject: partial.subject, title: partial.title, dateSeen: partial.dateSeen, lastReviewDate: partial.lastReviewDate || null }],
+    new Date()
+  );
   commit();
   return chapter;
+}
+
+/**
+ * Import groupé : plusieurs chapitres d'un coup (matière, titre, date vue en
+ * cours). Les éventuels rattrapages (révisions déjà dépassées) sont étalés
+ * sur plusieurs jours plutôt que tous collés ensemble — voir colleChapters.js.
+ */
+export function addChaptersBulk(rows) {
+  const chapters = importChapters(state, rows, new Date());
+  commit();
+  return chapters;
 }
 
 export function updateChapter(id, changes) {

@@ -41,6 +41,7 @@ export function renderSettingsView(container) {
 
   wrapper.appendChild(renderGeneralSection(state));
   wrapper.appendChild(renderColleAndRepetitionSection(state));
+  wrapper.appendChild(renderSubjectsSection(state));
   wrapper.appendChild(renderConstraintsSection(state));
   wrapper.appendChild(renderEventsSection(state));
   wrapper.appendChild(renderBackupSection());
@@ -133,6 +134,12 @@ function renderColleAndRepetitionSection(state) {
       <label>Durée d'une révision espacée (min)
         <input type="number" name="spacedDefaultDurationMinutes" min="5" step="5" value="${sr.defaultDurationMinutes}" />
       </label>
+      <label>Rattrapage si révisions dépassées (jours)
+        <input type="number" name="catchUpWindowDays" min="1" step="1" value="${sr.catchUpWindowDays}" />
+      </label>
+      <label>Étalement des rattrapages en import groupé (jours)
+        <input type="number" name="bulkImportSpreadDays" min="1" step="1" value="${sr.bulkImportSpreadDays}" />
+      </label>
     </div>
     <button type="submit" class="btn-primary">Enregistrer</button>
   `;
@@ -158,6 +165,8 @@ function renderColleAndRepetitionSection(state) {
         ...state.settings.spacedRepetition,
         baseIntervalsDays: intervals.length ? intervals : state.settings.spacedRepetition.baseIntervalsDays,
         defaultDurationMinutes: Number(data.get('spacedDefaultDurationMinutes')),
+        catchUpWindowDays: Number(data.get('catchUpWindowDays')),
+        bulkImportSpreadDays: Number(data.get('bulkImportSpreadDays')),
       },
     });
   });
@@ -190,6 +199,54 @@ function renderColleAndRepetitionSection(state) {
       section.appendChild(item);
     }
   }
+
+  return section;
+}
+
+// ---------------------------------------------------------------------------
+
+function renderSubjectsSection(state) {
+  const section = document.createElement('div');
+  section.className = 'section';
+  section.innerHTML =
+    '<h2>Mes matières</h2><p class="notice">L\'ordre sert de priorité quand plusieurs chapitres doivent être rattrapés en même temps (import groupé) — la première matière de la liste passe en premier.</p>';
+
+  const subjects = state.settings.subjects;
+  subjects.forEach((subj, i) => {
+    const item = document.createElement('div');
+    item.className = 'list-item subject-item';
+    item.style.borderLeft = `4px solid ${subj.color}`;
+    item.innerHTML = `<strong>${escapeHtml(subj.label)}</strong>`;
+
+    const actions = document.createElement('div');
+    actions.className = 'actions';
+
+    const upBtn = document.createElement('button');
+    upBtn.className = 'btn-undo';
+    upBtn.textContent = '↑';
+    upBtn.title = 'Monter';
+    upBtn.disabled = i === 0;
+    upBtn.addEventListener('click', () => {
+      const reordered = [...subjects];
+      [reordered[i - 1], reordered[i]] = [reordered[i], reordered[i - 1]];
+      updateSettings({ subjects: reordered });
+    });
+
+    const downBtn = document.createElement('button');
+    downBtn.className = 'btn-undo';
+    downBtn.textContent = '↓';
+    downBtn.title = 'Descendre';
+    downBtn.disabled = i === subjects.length - 1;
+    downBtn.addEventListener('click', () => {
+      const reordered = [...subjects];
+      [reordered[i + 1], reordered[i]] = [reordered[i], reordered[i + 1]];
+      updateSettings({ subjects: reordered });
+    });
+
+    actions.append(upBtn, downBtn);
+    item.appendChild(actions);
+    section.appendChild(item);
+  });
 
   return section;
 }

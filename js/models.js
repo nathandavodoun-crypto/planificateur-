@@ -97,6 +97,14 @@ export function defaultSettings() {
       easyStretchFactor: 1.5,
       hardShrinkFactor: 0.4,
       windowSlackDays: 2,
+      // Chapitre importé avec des révisions déjà dépassées : une seule
+      // révision de rattrapage, dans les prochains jours plutôt que de
+      // replanifier chaque échéance manquée.
+      catchUpWindowDays: 3,
+      // Lors d'un import groupé, les rattrapages sont étalés sur cette
+      // fenêtre (plutôt que tous collés dans catchUpWindowDays) pour ne pas
+      // surcharger les premiers jours.
+      bulkImportSpreadDays: 10,
     },
   };
 }
@@ -194,6 +202,7 @@ export function createChapter(partial) {
     subject: 'maths',
     title: '',
     dateSeen: null,
+    lastReviewDate: null, // optionnel : déjà révisé soi-même avant d'être ajouté à l'app
     status: 'active', // 'active' | 'maitrise' | 'archive'
     stage: 0,
     nextReviewDate: null,

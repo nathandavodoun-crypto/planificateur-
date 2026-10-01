@@ -1,7 +1,7 @@
 // Saisie rapide : devoir (< 15s), colle, ou chapitre — un sélecteur en haut
 // bascule entre les trois petits formulaires, sans changer d'onglet.
 
-import { getState, addTask, addOneOffEvent, addRecurringColleTemplate, addChapter, setColleChapters } from '../store.js';
+import { getState, addTask, addOneOffEvent, addRecurringColleTemplate, addChapter, addChaptersBulk, setColleChapters } from '../store.js';
 import { DEFAULT_DURATION_MINUTES_BY_TYPE, TASK_TYPE_LABELS } from '../models.js';
 import { todayISO } from '../utils/date.js';
 
@@ -293,6 +293,10 @@ function renderColleForm(wrapper, state) {
 // Chapitre
 // ---------------------------------------------------------------------------
 
+// Mode du formulaire Chapitre (un seul, ou import groupé) — conservé au
+// niveau du module pour survivre aux re-rendus, comme activeTab.
+let chapitreBulkMode = false;
+
 function renderChapitreForm(wrapper, state) {
   const title = document.createElement('h2');
   title.textContent = 'Ajouter un chapitre';
@@ -300,9 +304,31 @@ function renderChapitreForm(wrapper, state) {
 
   const intro = document.createElement('p');
   intro.className = 'notice';
-  intro.textContent = 'Un chapitre vu en cours est automatiquement suivi en répétition espacée (J+1, J+7, J+30 par défaut, réglable dans Réglages).';
+  intro.textContent =
+    'Un chapitre vu en cours est automatiquement suivi en répétition espacée (J+1, J+7, J+30 par défaut, réglable dans Réglages). Si des révisions sont déjà dépassées (chapitre ancien), une seule révision de rattrapage est programmée dans les prochains jours, puis le cycle normal reprend.';
   wrapper.appendChild(intro);
 
+  const toggleBtn = document.createElement('button');
+  toggleBtn.type = 'button';
+  toggleBtn.className = 'btn-secondary';
+  toggleBtn.textContent = chapitreBulkMode ? 'Revenir à l\'ajout simple' : 'Importer plusieurs chapitres d\'un coup';
+  toggleBtn.addEventListener('click', () => {
+    const container = wrapper.parentElement; // capturé AVANT de vider : wrapper est détaché par innerHTML=''
+    chapitreBulkMode = !chapitreBulkMode;
+    container.innerHTML = '';
+    renderTaskFormView(container);
+  });
+  wrapper.appendChild(toggleBtn);
+
+  if (chapitreBulkMode) {
+    renderChapitreBulkForm(wrapper, state);
+  } else {
+    renderChapitreSingleForm(wrapper, state);
+  }
+}
+
+function renderChapitreSingleForm(wrapper, state) {
+  const today = todayISO(new Date());
   const form = document.createElement('form');
   form.className = 'task-form';
   form.innerHTML = `
@@ -317,11 +343,22 @@ function renderChapitreForm(wrapper, state) {
     </label>
 
     <label>Date vue en cours
-      <input type="date" name="dateSeen" required value="${todayISO(new Date())}" max="${todayISO(new Date())}" />
+      <input type="date" name="dateSeen" required value="${today}" max="${today}" />
+    </label>
+
+    <label>Dernière révision faite (facultatif, si tu l'as déjà revu toi-même)
+      <input type="date" name="lastReviewDate" max="${today}" />
     </label>
 
     <button type="submit" class="btn-primary">Ajouter et planifier les révisions</button>
   `;
+
+  // La dernière révision ne peut pas précéder la date du cours.
+  const dateSeenInput = form.elements.dateSeen;
+  const lastReviewInput = form.elements.lastReviewDate;
+  dateSeenInput.addEventListener('change', () => {
+    lastReviewInput.min = dateSeenInput.value;
+  });
 
   form.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -330,7 +367,74 @@ function renderChapitreForm(wrapper, state) {
       subject: data.get('subject'),
       title: data.get('title').trim(),
       dateSeen: data.get('dateSeen'),
+      lastReviewDate: data.get('lastReviewDate') || null,
     });
+    location.hash = '#/devoirs';
+  });
+
+  wrapper.appendChild(form);
+}
+
+function renderChapitreBulkForm(wrapper, state) {
+  const today = todayISO(new Date());
+
+  const form = document.createElement('form');
+  form.className = 'task-form';
+
+  const rowsContainer = document.createElement('div');
+  rowsContainer.className = 'bulk-rows';
+
+  function addRow(values = {}) {
+    const row = document.createElement('div');
+    row.className = 'bulk-row';
+    row.innerHTML = `
+      <select name="bulkSubject">
+        ${state.settings.subjects.map((s) => `<option value="${escapeHtml(s.id)}" ${values.subject === s.id ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}
+      </select>
+      <input type="text" name="bulkTitle" placeholder="Titre du chapitre" value="${escapeHtml(values.title || '')}" />
+      <input type="date" name="bulkDateSeen" max="${today}" value="${values.dateSeen || ''}" />
+      <button type="button" class="bulk-row-remove">✕</button>
+    `;
+    row.querySelector('.bulk-row-remove').addEventListener('click', () => {
+      row.remove();
+    });
+    rowsContainer.appendChild(row);
+  }
+
+  // Trois lignes vides au départ : assez pour "plusieurs" sans surcharger l'écran.
+  addRow();
+  addRow();
+  addRow();
+
+  const addRowBtn = document.createElement('button');
+  addRowBtn.type = 'button';
+  addRowBtn.className = 'btn-secondary';
+  addRowBtn.textContent = '+ Ajouter une ligne';
+  addRowBtn.addEventListener('click', () => addRow());
+
+  const submitBtn = document.createElement('button');
+  submitBtn.type = 'submit';
+  submitBtn.className = 'btn-primary';
+  submitBtn.textContent = 'Importer tous les chapitres';
+
+  form.append(rowsContainer, addRowBtn, submitBtn);
+
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const rows = [...rowsContainer.querySelectorAll('.bulk-row')]
+      .map((row) => ({
+        subject: row.querySelector('[name="bulkSubject"]').value,
+        title: row.querySelector('[name="bulkTitle"]').value.trim(),
+        dateSeen: row.querySelector('[name="bulkDateSeen"]').value,
+      }))
+      .filter((r) => r.title && r.dateSeen);
+
+    if (rows.length === 0) {
+      alert('Remplis au moins une ligne (titre + date) avant d\'importer.');
+      return;
+    }
+
+    addChaptersBulk(rows);
     location.hash = '#/devoirs';
   });
 

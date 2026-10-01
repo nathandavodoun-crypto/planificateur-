@@ -5,7 +5,7 @@
 // — elles ne touchent jamais aux sessions elles-mêmes, seulement aux tâches,
 // événements et chapitres qui servent ensuite d'entrée au moteur pur.
 
-import { createTask, createOneOffEvent } from './models.js';
+import { createTask, createOneOffEvent, createChapter } from './models.js';
 import { todayISO, weekdayOfISO, addDaysISO, combineDateTime } from './utils/date.js';
 
 function findTask(state, id) {
@@ -30,6 +30,52 @@ function nextDateForDayOfWeek(now, dayOfWeek, endTime) {
     diff = 7;
   }
   return addDaysISO(todayIso, diff);
+}
+
+/**
+ * Calcule la révision initiale d'un chapitre à sa création (toujours au
+ * stade 0 : aucune révision n'a encore réellement eu lieu dans l'app). Un
+ * chapitre importé avec une date de cours ancienne verrait sa première
+ * échéance théorique (dateSeen/dernière révision + premier intervalle) déjà
+ * dans le passé — la planifier telle quelle lui donnerait une urgence
+ * artificiellement extrême (marge négative énorme) qui écraserait les vrais
+ * devoirs urgents. On détecte ce cas (`isCatchUp`) pour que l'appelant lui
+ * assigne une date de rattrapage proche à la place ; le cycle facile/
+ * difficile reprend ensuite normalement depuis cette révision.
+ */
+export function computeInitialChapterSchedule(dateSeen, lastReviewDate, now, settings) {
+  const todayIso = todayISO(now);
+  const anchor = lastReviewDate || dateSeen;
+  const theoreticalNext = addDaysISO(anchor, settings.spacedRepetition.baseIntervalsDays[0]);
+  const isCatchUp = theoreticalNext < todayIso;
+  return {
+    stage: 0,
+    nextReviewDate: isCatchUp ? null : theoreticalNext, // null => assigné par l'appelant (rattrapage)
+    isCatchUp,
+  };
+}
+
+/**
+ * Répartit les dates de rattrapage d'un lot de chapitres importés d'un coup :
+ * les plus anciens (puis, à ancienneté égale, la matière la plus prioritaire
+ * selon l'ordre de settings.subjects) passent en premier, étalés sur
+ * bulkImportSpreadDays plutôt que tous collés dans les mêmes 3 jours.
+ */
+function assignCatchUpDates(catchUpChapters, now, settings) {
+  const todayIso = todayISO(now);
+  const subjectOrder = new Map((settings.subjects || []).map((s, i) => [s.id, i]));
+  const sorted = [...catchUpChapters].sort((a, b) => {
+    if (a.dateSeen !== b.dateSeen) return a.dateSeen < b.dateSeen ? -1 : 1; // plus ancien d'abord
+    return (subjectOrder.get(a.subject) ?? 999) - (subjectOrder.get(b.subject) ?? 999);
+  });
+
+  const n = sorted.length;
+  const span = n > 1 ? settings.spacedRepetition.bulkImportSpreadDays : settings.spacedRepetition.catchUpWindowDays;
+  sorted.forEach((chapter, i) => {
+    const frac = n === 1 ? 1 : i / (n - 1);
+    const offset = n === 1 ? settings.spacedRepetition.catchUpWindowDays : Math.round(1 + frac * (span - 1));
+    chapter.nextReviewDate = addDaysISO(todayIso, Math.max(1, offset));
+  });
 }
 
 /** Crée la prochaine occurrence d'une colle récurrente si aucune à venir n'existe déjà. */
@@ -246,4 +292,41 @@ export function handleTaskCompletionSideEffects(state, task, difficultyByChapter
       if (ch.fusedIntoEventId === task.linkedEventId) ch.fusedIntoEventId = null;
     }
   }
+}
+
+/**
+ * Importe un ou plusieurs chapitres d'un coup (saisie rapide ou import
+ * groupé) : calcule le stade/la révision initiale de chacun, en étalant les
+ * éventuels rattrapages sur plusieurs jours quand il y en a plus d'un.
+ * `rows` : [{ subject, title, dateSeen, lastReviewDate? }]
+ */
+export function importChapters(state, rows, now) {
+  const created = [];
+  const catchUpChapters = [];
+
+  for (const row of rows) {
+    const { stage, nextReviewDate, isCatchUp } = computeInitialChapterSchedule(
+      row.dateSeen,
+      row.lastReviewDate || null,
+      now,
+      state.settings
+    );
+    const chapter = createChapter({
+      subject: row.subject,
+      title: row.title,
+      dateSeen: row.dateSeen,
+      lastReviewDate: row.lastReviewDate || null,
+      stage,
+      nextReviewDate, // null si rattrapage : assigné juste après
+    });
+    created.push(chapter);
+    if (isCatchUp) catchUpChapters.push(chapter);
+  }
+
+  if (catchUpChapters.length > 0) {
+    assignCatchUpDates(catchUpChapters, now, state.settings);
+  }
+
+  state.chapters.push(...created);
+  return created;
 }

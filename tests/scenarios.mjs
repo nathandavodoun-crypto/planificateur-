@@ -21,6 +21,7 @@ import {
   ensureSpacedRepetitionTasks,
   setColleChapters,
   handleTaskCompletionSideEffects,
+  importChapters,
 } from '../js/colleChapters.js';
 import { timeToMinutes, addDaysISO, formatDateFR, formatDuration, combineDateTime } from '../js/utils/date.js';
 
@@ -583,6 +584,79 @@ function scenarioG() {
 }
 
 // ---------------------------------------------------------------------------
+// Scénario H — Import d'un chapitre ancien (rattrapage, pas de priorité extrême)
+// ---------------------------------------------------------------------------
+
+function scenarioH() {
+  const now = new Date(2026, 8, 28, 7, 0);
+  const settings = defaultSettings();
+  const weeklyConstraints = baseConstraints();
+
+  // Vu il y a 50 jours, jamais révisé : sans rattrapage, l'échéance théorique
+  // (dateSeen + J+1) serait à -49 jours, donnant une marge négative énorme.
+  const oldChapter = { subject: 'chimie', title: 'Vieux chapitre', dateSeen: addDaysISO(REF_DATE, -50) };
+  // Un devoir "normal", légitimement urgent, ne doit pas se faire doubler.
+  const dm = createTask({ subject: 'maths', type: 'dm', title: 'DM urgent', deadlineDate: addDaysISO(REF_DATE, 2), deadlineTime: '20:00', estimatedDurationMinutes: 60, priority: 2 });
+
+  const data = { tasks: [dm], sessions: [], weeklyConstraints, oneOffEvents: [], chapters: [], recurringColleTemplates: [], settings };
+  const [chapter] = importChapters(data, [oldChapter], now);
+  ensureSpacedRepetitionTasks(data, now);
+  const result = recomputeSchedule(now, data);
+  const tasksById = new Map(data.tasks.map((t) => [t.id, t]));
+
+  printSchedule('Scénario H : import d\'un vieux chapitre (rattrapage)', result, tasksById, weeklyConstraints, [], settings, REF_DATE, addDaysISO(REF_DATE, 3));
+
+  console.log('Vérifications :');
+  check("La révision n'est PAS programmée à son échéance théorique passée", chapter.nextReviewDate > REF_DATE);
+  check(
+    `Elle tombe bien dans la fenêtre de rattrapage (${settings.spacedRepetition.catchUpWindowDays} jours)`,
+    chapter.nextReviewDate <= addDaysISO(REF_DATE, settings.spacedRepetition.catchUpWindowDays)
+  );
+  const dmSession = result.sessions.find((s) => s.taskId === dm.id);
+  check("Le DM urgent garde la priorité (il n'est pas évincé par le rattrapage)", !!dmSession && dmSession.date === REF_DATE);
+}
+
+// ---------------------------------------------------------------------------
+// Scénario I — Import groupé : étalement des rattrapages par ancienneté/matière
+// ---------------------------------------------------------------------------
+
+function scenarioI() {
+  const now = new Date(2026, 8, 28, 7, 0);
+  const settings = defaultSettings(); // ordre des matières : maths, physique, chimie, si, ...
+  const weeklyConstraints = [];
+
+  const rows = [
+    { subject: 'chimie', title: 'Chimie ancienne', dateSeen: addDaysISO(REF_DATE, -60) },
+    { subject: 'physique', title: 'Physique ancienne (même ancienneté)', dateSeen: addDaysISO(REF_DATE, -60) },
+    { subject: 'maths', title: 'Maths récente', dateSeen: addDaysISO(REF_DATE, -1) }, // pas de rattrapage
+  ];
+
+  const data = { tasks: [], sessions: [], weeklyConstraints, oneOffEvents: [], chapters: [], recurringColleTemplates: [], settings };
+  const created = importChapters(data, rows, now);
+  const chimie = created.find((c) => c.title === 'Chimie ancienne');
+  const physique = created.find((c) => c.title === 'Physique ancienne (même ancienneté)');
+  const maths = created.find((c) => c.title === 'Maths récente');
+
+  console.log('\n=== Scénario I : import groupé — étalement des rattrapages ===');
+  console.log(`Chimie   -> prochaine révision ${chimie.nextReviewDate}`);
+  console.log(`Physique -> prochaine révision ${physique.nextReviewDate}`);
+  console.log(`Maths    -> prochaine révision ${maths.nextReviewDate} (pas un rattrapage)`);
+
+  console.log('Vérifications :');
+  check('Les deux chapitres anciens sont bien détectés comme rattrapages', chimie.nextReviewDate > REF_DATE && physique.nextReviewDate > REF_DATE);
+  check('Ils ne tombent PAS le même jour (étalés, pas collés)', chimie.nextReviewDate !== physique.nextReviewDate);
+  check(
+    'À ancienneté égale, la matière la plus prioritaire (physique avant chimie dans les réglages) passe en premier',
+    physique.nextReviewDate < chimie.nextReviewDate
+  );
+  check(
+    `L'étalement reste dans la fenêtre d'import groupé (${settings.spacedRepetition.bulkImportSpreadDays} jours)`,
+    chimie.nextReviewDate <= addDaysISO(REF_DATE, settings.spacedRepetition.bulkImportSpreadDays)
+  );
+  check('Le chapitre récent (pas de rattrapage) garde son échéance théorique normale', maths.nextReviewDate === addDaysISO(addDaysISO(REF_DATE, -1), 1));
+}
+
+// ---------------------------------------------------------------------------
 
 scenarioA();
 scenarioB();
@@ -591,6 +665,8 @@ scenarioD();
 scenarioE();
 scenarioF();
 scenarioG();
+scenarioH();
+scenarioI();
 
 console.log(`\n${totalChecks - failedChecks}/${totalChecks} vérifications passées.`);
 if (failedChecks > 0) {

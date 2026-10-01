@@ -359,6 +359,14 @@ input, select, textarea {
   color: var(--text-muted);
 }
 
+.subject-item .actions button {
+  color: var(--text-muted);
+}
+.subject-item .actions button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
 .settings-grid {
   display: flex;
   flex-direction: column;
@@ -414,6 +422,38 @@ input, select, textarea {
 }
 .checkbox-row input {
   width: auto;
+}
+
+/* ---- Import groupé de chapitres ---- */
+
+.bulk-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.bulk-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  padding-right: 32px;
+  position: relative;
+}
+
+.bulk-row-remove {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: none;
+  border: none;
+  color: var(--danger);
+  font-size: 16px;
+  cursor: pointer;
 }
 
 /* ---- Badge de type (devoir / colle / révision espacée) ---- */
