@@ -8,6 +8,7 @@ import {
   addWeeklyConstraint,
   deleteWeeklyConstraint,
   addOneOffEvent,
+  addOneOffEventsBulk,
   deleteOneOffEvent,
   deactivateRecurringColleTemplate,
   exportBackup,
@@ -32,6 +33,39 @@ const DAYS_DISPLAY = [
 
 const CONSTRAINT_CATEGORIES = { cours: 'Cours', sport: 'Sport', repas: 'Repas', trajet: 'Trajet', autre: 'Autre' };
 const EVENT_CATEGORIES = { colle: 'Colle', ds: 'DS', adhoc: 'Imprévu', autre: 'Autre' };
+
+// Planning officiel des DS CPGE PCSI/PSI 2026/2027 (capture fournie par
+// l'utilisateur) — matière à null quand le DS couvre deux disciplines à la
+// fois (pas de matière unique à choisir), horaire 08:00–12:00 par défaut
+// (confirmé avec l'utilisateur, les vraies dates n'étaient pas précisées).
+const DS_PLANNING_2026_2027 = [
+  { date: '2026-09-12', label: 'DS Maths', subject: 'maths' },
+  { date: '2026-09-19', label: 'DS Physique / Chimie', subject: null },
+  { date: '2026-09-26', label: 'DS Anglais', subject: 'anglais' },
+  { date: '2026-10-03', label: 'DS Maths / Info', subject: null },
+  { date: '2026-10-10', label: 'DS Physique', subject: 'physique' },
+  { date: '2026-10-17', label: 'DS SII', subject: 'si' },
+  { date: '2026-11-07', label: 'DS Maths', subject: 'maths' },
+  { date: '2026-11-14', label: 'DS Physique / Chimie', subject: null },
+  { date: '2026-11-21', label: 'DS Français', subject: 'francais' },
+  { date: '2026-11-28', label: 'DS Maths / Info', subject: null },
+  { date: '2026-12-05', label: 'DS Physique', subject: 'physique' },
+  { date: '2026-12-12', label: 'DS SII', subject: 'si' },
+  { date: '2026-12-19', label: 'DS Anglais', subject: 'anglais' },
+  { date: '2027-01-09', label: 'DS Maths', subject: 'maths' },
+  { date: '2027-01-16', label: 'DS Physique / Chimie', subject: null },
+  { date: '2027-01-23', label: 'DS SII', subject: 'si' },
+  { date: '2027-02-06', label: 'DS Maths / Info', subject: null },
+  { date: '2027-02-20', label: 'DS Physique', subject: 'physique' },
+  { date: '2027-02-27', label: 'DS Français', subject: 'francais' },
+  { date: '2027-03-06', label: 'DS Maths', subject: 'maths' },
+  { date: '2027-03-13', label: 'DS Physique / Chimie', subject: null },
+  { date: '2027-03-20', label: 'DS SII', subject: 'si' },
+  { date: '2027-04-17', label: 'DS Maths / Info (PCSI)', subject: null },
+  { date: '2027-04-24', label: 'DS Physique (PCSI)', subject: 'physique' },
+  { date: '2027-05-15', label: 'DS Anglais (PCSI)', subject: 'anglais' },
+  { date: '2027-05-22', label: 'DS Maths (PCSI)', subject: 'maths' },
+];
 
 function escapeHtml(str) {
   const div = document.createElement('div');
@@ -470,6 +504,31 @@ function renderEventsSection(state) {
   const section = document.createElement('div');
   section.className = 'section';
   section.innerHTML = '<h2>Colles, DS et imprévus</h2><p class="notice">Un événement à une date précise — la case "Imprévu" sert à bloquer un créneau ponctuel (sortie, rendez-vous...).</p>';
+
+  const existingDsDates = new Set(state.oneOffEvents.filter((e) => e.category === 'ds').map((e) => e.date));
+  const alreadyImported = DS_PLANNING_2026_2027.every((d) => existingDsDates.has(d.date));
+  const importDsBtn = document.createElement('button');
+  importDsBtn.type = 'button';
+  importDsBtn.className = 'btn-secondary';
+  importDsBtn.textContent = alreadyImported
+    ? `Planning de DS 2026/2027 déjà importé (${DS_PLANNING_2026_2027.length} dates)`
+    : `📥 Importer le planning de DS 2026/2027 (${DS_PLANNING_2026_2027.length} dates, 08:00–12:00)`;
+  importDsBtn.disabled = alreadyImported;
+  importDsBtn.addEventListener('click', () => {
+    const toAdd = DS_PLANNING_2026_2027.filter((d) => !existingDsDates.has(d.date));
+    if (!confirm(`Ajouter ${toAdd.length} DS au planning (samedis, 08:00–12:00) ?`)) return;
+    addOneOffEventsBulk(
+      toAdd.map((d) => ({
+        category: 'ds',
+        label: d.label,
+        subject: d.subject,
+        date: d.date,
+        startTime: '08:00',
+        endTime: '12:00',
+      }))
+    );
+  });
+  section.appendChild(importDsBtn);
 
   const upcoming = [...state.oneOffEvents].sort((a, b) => (a.date < b.date ? -1 : 1));
   for (const ev of upcoming) {

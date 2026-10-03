@@ -186,6 +186,14 @@ export function addOneOffEvent(partial) {
   return event;
 }
 
+/** Import groupé (ex. tout un planning de DS d'un coup) : un seul recalcul pour tous. */
+export function addOneOffEventsBulk(rows) {
+  const events = rows.map((partial) => createOneOffEvent(partial));
+  state.oneOffEvents.push(...events);
+  commit();
+  return events;
+}
+
 export function deleteOneOffEvent(id) {
   const event = state.oneOffEvents.find((e) => e.id === id);
   if (event) cascadeCleanupOneOffEvent(state, event); // libère les chapitres fusionnés, sa tâche liée
