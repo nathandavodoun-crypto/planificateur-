@@ -6,7 +6,7 @@ import {
   getState,
   updateSettings,
   addWeeklyConstraint,
-  addWeeklyConstraintsBulk,
+  replaceWeeklyConstraints,
   deleteWeeklyConstraint,
   addOneOffEvent,
   addOneOffEventsBulk,
@@ -36,29 +36,47 @@ const CONSTRAINT_CATEGORIES = { cours: 'Cours', sport: 'Sport', repas: 'Repas', 
 const EVENT_CATEGORIES = { colle: 'Colle', ds: 'DS', adhoc: 'Imprévu', autre: 'Autre' };
 
 // Emploi du temps fixe (capture fournie par l'utilisateur, sans horaires
-// affichés — grille de 1h par ligne, première ligne = 07:00 confirmé avec
-// lui). Les khôlles ne sont PAS importées : elles se gèrent avec le mode
-// colle de l'app. Cours [PCSI G1] inclus (l'utilisateur est en G1). Le
-// créneau 07:00–08:00 des jours sans cours à cette heure est bloqué pour
-// qu'aucun devoir n'y soit planifié.
+// affichés). Matinée : première ligne = 07:00, cours de 2h ; l'après-midi
+// commence à 13:30 (corrigé par l'utilisateur) : 13:30–15:30 puis
+// 15:30–17:30. Les khôlles ne sont PAS importées : elles se gèrent avec le
+// mode colle de l'app. Cours [PCSI G1] inclus (l'utilisateur est en G1).
+//
+// Deux blocs "pas de travail" : 07:00–08:00 les jours sans cours à cette
+// heure, et le midi 12:00–13:30 tous les jours (l'utilisateur ne sait pas s'il
+// travaillera). Le mercredi et le jeudi, la matinée finit à 11:00 : le
+// créneau 11:00–12:00 reste donc libre pour des devoirs (sauf s'il y a une
+// colle, qui se déclare à part).
+//
+// `importId` marque ces créneaux pour pouvoir les remplacer proprement lors
+// d'une correction, sans doublons ni anciens horaires qui traînent.
+const TIMETABLE_IMPORT_ID = 'emploi-du-temps-2026';
 const TIMETABLE_CONSTRAINTS = [
   { label: 'Pas de travail (matin)', category: 'autre', daysOfWeek: [1, 2, 4, 5], startTime: '07:00', endTime: '08:00' },
+  { label: 'Midi (pas de travail)', category: 'repas', daysOfWeek: [1, 2, 3, 4, 5], startTime: '12:00', endTime: '13:30' },
   { label: 'Maths (502)', category: 'cours', daysOfWeek: [1, 5], startTime: '08:00', endTime: '10:00' },
   { label: 'Maths (502)', category: 'cours', daysOfWeek: [2], startTime: '10:00', endTime: '12:00' },
   { label: 'Maths (502)', category: 'cours', daysOfWeek: [3], startTime: '07:00', endTime: '09:00' },
-  { label: 'Maths (502)', category: 'cours', daysOfWeek: [4], startTime: '13:00', endTime: '15:00' },
+  { label: 'Maths (502)', category: 'cours', daysOfWeek: [4], startTime: '13:30', endTime: '15:30' },
   { label: 'Physique (502)', category: 'cours', daysOfWeek: [1], startTime: '10:00', endTime: '12:00' },
   { label: 'Physique (502)', category: 'cours', daysOfWeek: [3], startTime: '09:00', endTime: '11:00' },
-  { label: 'Physique (502)', category: 'cours', daysOfWeek: [5], startTime: '13:00', endTime: '15:00' },
-  { label: 'Physique G1 (312)', category: 'cours', daysOfWeek: [3], startTime: '15:00', endTime: '17:00' },
+  { label: 'Physique (502)', category: 'cours', daysOfWeek: [5], startTime: '13:30', endTime: '15:30' },
+  { label: 'Physique G1 (312)', category: 'cours', daysOfWeek: [3], startTime: '15:30', endTime: '17:30' },
   { label: 'SII (502)', category: 'cours', daysOfWeek: [2], startTime: '08:00', endTime: '10:00' },
   { label: 'SII G1 (005)', category: 'cours', daysOfWeek: [4], startTime: '09:00', endTime: '11:00' },
-  { label: 'Chimie (502)', category: 'cours', daysOfWeek: [2], startTime: '13:00', endTime: '15:00' },
-  { label: 'Chimie G1 (304)', category: 'cours', daysOfWeek: [3], startTime: '13:00', endTime: '15:00' },
-  { label: 'Anglais (502)', category: 'cours', daysOfWeek: [1], startTime: '13:00', endTime: '15:00' },
+  { label: 'Chimie (502)', category: 'cours', daysOfWeek: [2], startTime: '13:30', endTime: '15:30' },
+  { label: 'Chimie G1 (304)', category: 'cours', daysOfWeek: [3], startTime: '13:30', endTime: '15:30' },
+  { label: 'Anglais (502)', category: 'cours', daysOfWeek: [1], startTime: '13:30', endTime: '15:30' },
   { label: 'Français-Philo (502)', category: 'cours', daysOfWeek: [5], startTime: '10:00', endTime: '12:00' },
-  { label: 'EPS', category: 'cours', daysOfWeek: [1], startTime: '15:00', endTime: '17:00' },
-];
+  { label: 'EPS', category: 'cours', daysOfWeek: [1], startTime: '15:30', endTime: '17:30' },
+].map((c) => ({ ...c, importId: TIMETABLE_IMPORT_ID }));
+
+// Première version de l'import (sans `importId`, après-midi à 13:00/15:00) :
+// à reconnaître pour la remplacer chez quelqu'un qui l'aurait déjà importée.
+const LEGACY_TIMETABLE_LABELS = new Set([
+  'Pas de travail (matin)', 'Maths (502)', 'Physique (502)', 'Physique G1 (312)', 'SII (502)',
+  'SII G1 (005)', 'Chimie (502)', 'Chimie G1 (304)', 'Anglais (502)', 'Français-Philo (502)', 'EPS',
+]);
+const isImportedTimetableConstraint = (c) => c.importId === TIMETABLE_IMPORT_ID || (!c.importId && LEGACY_TIMETABLE_LABELS.has(c.label));
 
 // Planning officiel des DS CPGE PCSI/PSI 2026/2027 (capture fournie par
 // l'utilisateur) — matière à null quand le DS couvre deux disciplines à la
@@ -460,19 +478,24 @@ function renderConstraintsSection(state) {
   section.innerHTML = '<h2>Emploi du temps récurrent</h2><p class="notice">Cours, sport, repas, trajets... tout ce qui revient chaque semaine.</p>';
 
   const constraintKey = (c) => `${c.label}|${[...c.daysOfWeek].sort().join(',')}|${c.startTime}|${c.endTime}`;
-  const existingKeys = new Set(state.weeklyConstraints.map(constraintKey));
-  const missing = TIMETABLE_CONSTRAINTS.filter((c) => !existingKeys.has(constraintKey(c)));
+  const alreadyImported = state.weeklyConstraints.filter(isImportedTimetableConstraint);
+  const importedKeys = new Set(alreadyImported.map(constraintKey));
+  const upToDate =
+    alreadyImported.length === TIMETABLE_CONSTRAINTS.length &&
+    TIMETABLE_CONSTRAINTS.every((c) => importedKeys.has(constraintKey(c)));
   const importTimetableBtn = document.createElement('button');
   importTimetableBtn.type = 'button';
   importTimetableBtn.className = 'btn-secondary';
-  importTimetableBtn.textContent =
-    missing.length === 0
-      ? 'Emploi du temps déjà importé'
-      : `📥 Importer mon emploi du temps (${missing.length} créneaux, sans les khôlles)`;
-  importTimetableBtn.disabled = missing.length === 0;
+  importTimetableBtn.textContent = upToDate
+    ? 'Emploi du temps à jour'
+    : alreadyImported.length > 0
+      ? `📥 Mettre à jour mon emploi du temps (${TIMETABLE_CONSTRAINTS.length} créneaux, remplace l'ancien import)`
+      : `📥 Importer mon emploi du temps (${TIMETABLE_CONSTRAINTS.length} créneaux, sans les khôlles)`;
+  importTimetableBtn.disabled = upToDate;
   importTimetableBtn.addEventListener('click', () => {
-    if (!confirm(`Ajouter ${missing.length} créneaux de cours à ton emploi du temps, et fixer le début de journée à 07:00 ?`)) return;
-    addWeeklyConstraintsBulk(missing);
+    const verb = alreadyImported.length > 0 ? 'Remplacer ton ancien import par' : 'Ajouter';
+    if (!confirm(`${verb} ${TIMETABLE_CONSTRAINTS.length} créneaux (cours, matin, midi), et fixer le début de journée à 07:00 ?`)) return;
+    replaceWeeklyConstraints(isImportedTimetableConstraint, TIMETABLE_CONSTRAINTS);
     updateSettings({ dayStartTime: '07:00' });
   });
   section.appendChild(importTimetableBtn);

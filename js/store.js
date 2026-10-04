@@ -173,6 +173,19 @@ export function addWeeklyConstraintsBulk(rows) {
   return constraints;
 }
 
+/**
+ * Remplace en une fois un lot de contraintes déjà importées (celles que
+ * `shouldRemove` désigne) par une nouvelle version — évite d'avoir des
+ * anciens ET des nouveaux horaires qui se chevauchent après une correction.
+ */
+export function replaceWeeklyConstraints(shouldRemove, rows) {
+  state.weeklyConstraints = state.weeklyConstraints.filter((c) => !shouldRemove(c));
+  const constraints = rows.map((partial) => createWeeklyConstraint(partial));
+  state.weeklyConstraints.push(...constraints);
+  commit();
+  return constraints;
+}
+
 export function updateWeeklyConstraint(id, changes) {
   const constraint = state.weeklyConstraints.find((c) => c.id === id);
   if (!constraint) return;

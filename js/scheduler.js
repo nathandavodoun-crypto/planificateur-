@@ -63,9 +63,12 @@ export function subtractIntervals(base, blocksToRemove) {
   return result.sort((a, b) => a[0] - b[0]);
 }
 
-function firstFit(freeIntervals, duration) {
+// `maxEnd` : heure (en minutes) avant laquelle la session doit se terminer —
+// utilisé le jour même d'une échéance (une session à 20h ne peut pas servir
+// un devoir dû à 12h).
+function firstFit(freeIntervals, duration, maxEnd = Infinity) {
   for (const [s, e] of freeIntervals) {
-    if (e - s >= duration) return { start: s, end: s + duration };
+    if (Math.min(e, maxEnd) - s >= duration) return { start: s, end: s + duration };
   }
   return null;
 }
@@ -282,6 +285,10 @@ export function recomputeSchedule(now, data) {
         sessionIndex: alreadyCount + i,
         durationMinutes,
         deadlineDateISO: task.deadlineDate,
+        deadlineMinutes: timeToMinutes(deadlineTime),
+        // Déjà en retard : on garde l'ancien comportement (replanifier au plus
+        // tôt) plutôt que de rendre le devoir impossible à jamais.
+        overdue: deadlineInstant.getTime() <= now.getTime(),
         notBeforeDate: notBeforeDates[i],
         slackMinutes,
         priority: task.priority,
@@ -327,6 +334,7 @@ export function recomputeSchedule(now, data) {
         const eligible = units.filter((u) => {
           if (u.placed) return false;
           if (u.notBeforeDate > cursor) return false;
+          if (!u.overdue && cursor > u.deadlineDateISO) return false; // jamais après l'échéance
           const otherDates = placedDatesByTask.get(u.taskId);
           if (!otherDates || otherDates.length === 0) return true;
           const gapNeeded = u.taskType === 'revision_ds' ? settings.minGapDaysDsRevision : settings.minGapDaysSameTaskDefault;
@@ -352,7 +360,8 @@ export function recomputeSchedule(now, data) {
         let placedOne = false;
         for (const unit of eligible) {
           if (unit.durationMinutes > capRemaining) continue;
-          const slot = firstFit(free, unit.durationMinutes);
+          const maxEnd = !unit.overdue && cursor === unit.deadlineDateISO ? unit.deadlineMinutes : Infinity;
+          const slot = firstFit(free, unit.durationMinutes, maxEnd);
           if (!slot) continue;
 
           placed.push(

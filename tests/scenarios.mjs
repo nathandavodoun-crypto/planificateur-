@@ -694,6 +694,39 @@ function scenarioJ() {
 }
 
 // ---------------------------------------------------------------------------
+// Scénario K — Jamais de session après l'échéance (date ET heure)
+// ---------------------------------------------------------------------------
+
+function scenarioK() {
+  const now = new Date(2026, 8, 28, 7, 0); // lundi
+  const settings = defaultSettings();
+
+  // A : dû lundi 12:00 mais 6h de travail (impossible : plafond 3h/jour).
+  // B : dû vendredi, ce qui étend l'horizon de planification jusqu'à vendredi.
+  // Avant le correctif, le reste de A était silencieusement placé mardi.
+  const A = createTask({ subject: 'maths', type: 'dm', title: 'A dû lundi midi', deadlineDate: REF_DATE, deadlineTime: '12:00', estimatedDurationMinutes: 360, priority: 2 });
+  const B = createTask({ subject: 'physique', type: 'dm', title: 'B dû vendredi', deadlineDate: addDaysISO(REF_DATE, 4), deadlineTime: '20:00', estimatedDurationMinutes: 60, priority: 2 });
+  const r = recomputeSchedule(now, { tasks: [A, B], sessions: [], weeklyConstraints: [], oneOffEvents: [], settings });
+  const sessionsA = r.sessions.filter((s) => s.taskId === A.id);
+
+  console.log('\n=== Scénario K : jamais de session après l\'échéance ===');
+  for (const s of sessionsA) console.log(`  A : ${s.date} ${s.startTime}-${s.endTime}`);
+  for (const w of r.warnings) console.log(`  ⚠ ${w.message}`);
+
+  check("Aucune session de A après son échéance (lundi 12:00)", sessionsA.every((s) => s.date === REF_DATE && timeToMinutes(s.endTime) <= timeToMinutes('12:00')));
+  check('Le travail de A qui ne rentre pas est signalé par un avertissement (pas placé en silence)', r.warnings.some((w) => w.taskId === A.id));
+  check('B, qui a de la marge, est bien planifié normalement', r.sessions.some((s) => s.taskId === B.id));
+
+  // Même jour : une session de 90 min pour un devoir dû à 13:30 ne doit pas finir à 21:00.
+  const constraints = [createWeeklyConstraint({ label: 'Cours', category: 'cours', daysOfWeek: [1], startTime: '07:00', endTime: '11:00' }),
+                       createWeeklyConstraint({ label: 'Midi', category: 'repas', daysOfWeek: [1], startTime: '12:00', endTime: '13:30' })];
+  const C = createTask({ subject: 'maths', type: 'dm', title: 'C dû 13h30', deadlineDate: REF_DATE, deadlineTime: '13:30', estimatedDurationMinutes: 90, priority: 2 });
+  const r2 = recomputeSchedule(now, { tasks: [C], sessions: [], weeklyConstraints: constraints, oneOffEvents: [], settings });
+  check('Un devoir de 90 min dû à 13:30, avec seulement 11:00–12:00 de libre avant, n\'est pas casé le soir même', r2.sessions.every((s) => timeToMinutes(s.endTime) <= timeToMinutes('13:30')));
+  check('… et un avertissement le signale', r2.warnings.some((w) => w.taskId === C.id));
+}
+
+// ---------------------------------------------------------------------------
 
 scenarioA();
 scenarioB();
@@ -705,6 +738,7 @@ scenarioG();
 scenarioH();
 scenarioI();
 scenarioJ();
+scenarioK();
 
 console.log(`\n${totalChecks - failedChecks}/${totalChecks} vérifications passées.`);
 if (failedChecks > 0) {
