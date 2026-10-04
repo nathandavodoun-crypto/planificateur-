@@ -3,7 +3,7 @@
 // d'accueil"). Ne touche jamais aux données (elles vivent dans localStorage,
 // pas ici).
 
-const CACHE_VERSION = 'v9';
+const CACHE_VERSION = 'v10';
 const CACHE_NAME = `planificateur-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
@@ -60,25 +60,26 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Stratégie : cache d'abord (app quasi-statique), avec repli réseau si
-// absent du cache, puis mise en cache de la réponse pour la prochaine fois.
+// Stratégie : RÉSEAU D'ABORD, cache en secours. Avec "cache d'abord", une
+// mise à jour déployée n'apparaissait qu'après plusieurs fermetures/
+// réouvertures de l'app (le téléphone resservait l'ancienne version). Ici, dès
+// qu'on est en ligne on récupère toujours la dernière version (et on met le
+// cache à jour au passage) ; hors ligne, on retombe sur la dernière copie
+// connue — l'app reste donc utilisable sans réseau.
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) return cached;
-      return fetch(event.request)
-        .then((response) => {
-          if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-          }
-          return response;
-        })
-        .catch(() => caches.match('./index.html'));
-    })
+    fetch(event.request, { cache: 'no-cache' })
+      .then((response) => {
+        if (response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
+        return response;
+      })
+      .catch(() => caches.match(event.request).then((cached) => cached || caches.match('./index.html')))
   );
 });

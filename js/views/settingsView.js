@@ -86,6 +86,7 @@ export function renderSettingsView(container) {
   wrapper.appendChild(renderConstraintsSection(state));
   wrapper.appendChild(renderEventsSection(state));
   wrapper.appendChild(renderBackupSection());
+  wrapper.appendChild(renderVersionFooter());
 
   container.appendChild(wrapper);
 }
@@ -643,4 +644,25 @@ function renderBackupSection() {
 
   section.append(exportBtn, importLabel);
   return section;
+}
+
+// ---------------------------------------------------------------------------
+
+// Version installée, lue depuis le nom du cache du service worker
+// (planificateur-vN) — toujours synchronisée avec sw.js, sans constante
+// supplémentaire à maintenir. Permet de vérifier d'un coup d'œil sur le
+// téléphone si la dernière mise à jour est bien arrivée.
+function renderVersionFooter() {
+  const footer = document.createElement('p');
+  footer.className = 'notice';
+  footer.textContent = 'Version : …';
+  if ('caches' in window) {
+    caches.keys().then((keys) => {
+      const current = keys.filter((k) => k.startsWith('planificateur-')).sort().pop();
+      footer.textContent = current ? `Version de l'app : ${current.replace('planificateur-', '')}` : "Version de l'app : (hors installation)";
+    });
+  } else {
+    footer.textContent = "Version de l'app : inconnue";
+  }
+  return footer;
 }
