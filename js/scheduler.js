@@ -214,6 +214,44 @@ function lastSubjectOnDate(dateISO, sessionsList, tasksById) {
 }
 
 // ---------------------------------------------------------------------------
+// Heure limite par défaut d'un devoir quand l'utilisateur n'en a pas donné
+// ---------------------------------------------------------------------------
+
+const HOMEWORK_TYPES = new Set(['dm', 'exercices', 'lecture', 'autre']);
+
+function normalizeText(str) {
+  return String(str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+/**
+ * Un devoir "pour demain" se rend EN COURS, pas à 22h30 : sans heure précisée,
+ * l'échéance est le début du cours concerné ce jour-là (cours dont le libellé
+ * commence par la matière du devoir, ex. "Maths (502)" pour un devoir de
+ * maths), à défaut le tout premier cours de la journée, à défaut la fin de
+ * journée. Ne touche pas aux révisions/préparations de colle, qui ont leur
+ * propre logique d'échéance.
+ */
+function defaultDeadlineTime(task, weeklyConstraints, settings) {
+  if (!HOMEWORK_TYPES.has(task.type)) return settings.dayEndCutoff;
+
+  const weekday = weekdayOfISO(task.deadlineDate);
+  const courses = weeklyConstraints.filter(
+    (c) =>
+      c.active &&
+      c.category === 'cours' &&
+      c.daysOfWeek.includes(weekday) &&
+      (!c.effectiveFrom || task.deadlineDate >= c.effectiveFrom) &&
+      (!c.effectiveUntil || task.deadlineDate <= c.effectiveUntil)
+  );
+  if (courses.length === 0) return settings.dayEndCutoff;
+
+  const subjectLabel = normalizeText((settings.subjects || []).find((s) => s.id === task.subject)?.label || task.subject);
+  const sameSubject = courses.filter((c) => normalizeText(c.label).startsWith(subjectLabel));
+  const pool = sameSubject.length > 0 ? sameSubject : courses;
+  return pool.map((c) => c.startTime).sort()[0];
+}
+
+// ---------------------------------------------------------------------------
 // Recalcul complet
 // ---------------------------------------------------------------------------
 
@@ -252,7 +290,7 @@ export function recomputeSchedule(now, data) {
     if (remaining <= 0) continue;
 
     const alreadyCount = generatedCountByTask.get(task.id) || 0;
-    const deadlineTime = task.deadlineTime || settings.dayEndCutoff;
+    const deadlineTime = task.deadlineTime || defaultDeadlineTime(task, weeklyConstraints, settings);
     const deadlineInstant = combineDateTime(task.deadlineDate, deadlineTime);
 
     let durations;

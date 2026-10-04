@@ -727,6 +727,45 @@ function scenarioK() {
 }
 
 // ---------------------------------------------------------------------------
+// Scénario L — Devoir "pour demain" sans heure : à rendre EN COURS, pas à 22h30
+// ---------------------------------------------------------------------------
+
+function scenarioL() {
+  const now = new Date(2026, 8, 27, 15, 0); // dimanche 27/09, 15:00
+  const settings = defaultSettings();
+  const monday = REF_DATE; // lundi 28/09
+  const constraints = [
+    createWeeklyConstraint({ label: 'Pas de travail (matin)', category: 'autre', daysOfWeek: [1], startTime: '07:00', endTime: '08:00' }),
+    createWeeklyConstraint({ label: 'Physique (502)', category: 'cours', daysOfWeek: [1], startTime: '08:00', endTime: '10:00' }),
+    createWeeklyConstraint({ label: 'Maths (502)', category: 'cours', daysOfWeek: [1], startTime: '10:00', endTime: '12:00' }),
+    createWeeklyConstraint({ label: 'Midi (pas de travail)', category: 'repas', daysOfWeek: [1], startTime: '12:00', endTime: '13:30' }),
+  ];
+
+  // Exercices de maths "pour demain" (lundi), sans heure : à rendre au cours de Maths (10:00).
+  const maths = createTask({ subject: 'maths', type: 'exercices', title: 'Exo 10 maths', deadlineDate: monday, estimatedDurationMinutes: 120, priority: 2 });
+  // Idem en physique : à rendre au cours de Physique (08:00).
+  const physique = createTask({ subject: 'physique', type: 'exercices', title: 'Exo 5 physique', deadlineDate: monday, estimatedDurationMinutes: 60, priority: 2 });
+  // Matière sans cours ce jour-là (Anglais) : repli sur le tout premier cours de la journée (08:00).
+  const anglais = createTask({ subject: 'anglais', type: 'lecture', title: 'Lecture anglais', deadlineDate: monday, estimatedDurationMinutes: 45, priority: 2 });
+  // Heure explicite : toujours respectée telle quelle (ici 18:00, donc le soir reste permis).
+  const explicite = createTask({ subject: 'maths', type: 'dm', title: 'DM dû lundi 18h', deadlineDate: monday, deadlineTime: '18:00', estimatedDurationMinutes: 60, priority: 2 });
+
+  const r = recomputeSchedule(now, { tasks: [maths, physique, anglais, explicite], sessions: [], weeklyConstraints: constraints, oneOffEvents: [], settings });
+  const endOf = (task) => r.sessions.filter((s) => s.taskId === task.id).map((s) => s.date + ' ' + s.endTime);
+  const lateFor = (task, limit) => r.sessions.filter((s) => s.taskId === task.id).some((s) => s.date > monday || (s.date === monday && timeToMinutes(s.endTime) > timeToMinutes(limit)));
+
+  console.log('\n=== Scénario L : devoir "pour demain" sans heure ===');
+  for (const t of [maths, physique, anglais, explicite]) console.log(`  ${t.title} : ${endOf(t).join(', ') || '(rien)'}`);
+  for (const w of r.warnings) console.log(`  ⚠ ${w.message}`);
+
+  check("Exo de maths pour lundi : fini avant le cours de Maths de lundi (10:00)", !lateFor(maths, '10:00') && endOf(maths).length > 0);
+  check("Exo de physique pour lundi : fini avant le cours de Physique de lundi (08:00), donc dimanche", !lateFor(physique, '08:00') && endOf(physique).length > 0);
+  check("Lecture d'anglais (aucun cours d'anglais lundi) : fini avant le premier cours de la journée (08:00)", !lateFor(anglais, '08:00') && endOf(anglais).length > 0);
+  check("Plus aucun de ces devoirs n'est placé le lundi soir (après l'échéance)", r.sessions.filter((s) => [maths, physique, anglais].some((t) => t.id === s.taskId)).every((s) => s.date < monday || timeToMinutes(s.endTime) <= timeToMinutes('10:00')));
+  check("Une heure limite explicite (18:00) reste respectée telle quelle", !lateFor(explicite, '18:00') && endOf(explicite).length > 0);
+}
+
+// ---------------------------------------------------------------------------
 
 scenarioA();
 scenarioB();
@@ -739,6 +778,7 @@ scenarioH();
 scenarioI();
 scenarioJ();
 scenarioK();
+scenarioL();
 
 console.log(`\n${totalChecks - failedChecks}/${totalChecks} vérifications passées.`);
 if (failedChecks > 0) {
