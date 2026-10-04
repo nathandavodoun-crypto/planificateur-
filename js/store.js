@@ -165,6 +165,14 @@ export function addWeeklyConstraint(partial) {
   return constraint;
 }
 
+/** Import groupé (ex. tout un emploi du temps) : un seul recalcul pour tous. */
+export function addWeeklyConstraintsBulk(rows) {
+  const constraints = rows.map((partial) => createWeeklyConstraint(partial));
+  state.weeklyConstraints.push(...constraints);
+  commit();
+  return constraints;
+}
+
 export function updateWeeklyConstraint(id, changes) {
   const constraint = state.weeklyConstraints.find((c) => c.id === id);
   if (!constraint) return;
