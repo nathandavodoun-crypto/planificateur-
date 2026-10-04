@@ -29,6 +29,7 @@ import {
   formatDuration,
 } from './utils/date.js';
 import { createSession } from './models.js';
+import { travelBlockForDate } from './travel.js';
 
 // ---------------------------------------------------------------------------
 // Arithmétique d'intervalles (minutes depuis minuit, entiers, demi-ouverts [a,b))
@@ -181,7 +182,7 @@ export function distributeNotBeforeDates(n, earliestDay, targetLastDay, minGapDa
 // Créneaux bloqués d'une journée donnée
 // ---------------------------------------------------------------------------
 
-function collectBlocksForDate(dateISO, weeklyConstraints, oneOffEvents, blockingSessions) {
+function collectBlocksForDate(dateISO, weeklyConstraints, oneOffEvents, blockingSessions, settings) {
   const weekday = weekdayOfISO(dateISO);
   const blocks = [];
 
@@ -192,6 +193,10 @@ function collectBlocksForDate(dateISO, weeklyConstraints, oneOffEvents, blocking
     if (c.effectiveUntil && dateISO > c.effectiveUntil) continue;
     blocks.push([timeToMinutes(c.startTime), timeToMinutes(c.endTime)]);
   }
+  // Trajet retour après le dernier cours de la journée (rien n'est planifié
+  // pendant qu'on rentre).
+  const travel = travelBlockForDate(dateISO, weeklyConstraints, settings);
+  if (travel) blocks.push([timeToMinutes(travel.start), timeToMinutes(travel.end)]);
   for (const ev of oneOffEvents) {
     if (ev.date === dateISO) blocks.push([timeToMinutes(ev.startTime), timeToMinutes(ev.endTime)]);
   }
@@ -217,7 +222,8 @@ function lastSubjectOnDate(dateISO, sessionsList, tasksById) {
 // Heure limite par défaut d'un devoir quand l'utilisateur n'en a pas donné
 // ---------------------------------------------------------------------------
 
-const HOMEWORK_TYPES = new Set(['dm', 'exercices', 'lecture', 'autre']);
+// Types dont l'échéance tombe EN COURS (rendu de devoir, évaluation en classe).
+const HOMEWORK_TYPES = new Set(['dm', 'exercices', 'lecture', 'autre', 'revision_ds']);
 
 function normalizeText(str) {
   return String(str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -232,7 +238,9 @@ function normalizeText(str) {
  * propre logique d'échéance.
  */
 function defaultDeadlineTime(task, weeklyConstraints, settings) {
-  if (!HOMEWORK_TYPES.has(task.type)) return settings.dayEndCutoff;
+  // Une préparation de colle liée à une colle a déjà une heure précise ; une saisie manuelle non.
+  const usesCourseDeadline = HOMEWORK_TYPES.has(task.type) || (task.type === 'preparation_colle' && !task.linkedEventId);
+  if (!usesCourseDeadline) return settings.dayEndCutoff;
 
   const weekday = weekdayOfISO(task.deadlineDate);
   const courses = weeklyConstraints.filter(
@@ -358,7 +366,7 @@ export function recomputeSchedule(now, data) {
     const dayEndMinutes = timeToMinutes(settings.dayEndCutoff);
 
     if (dayStartMinutes < dayEndMinutes) {
-      const blocks = collectBlocksForDate(cursor, weeklyConstraints, oneOffEvents, [...immutable, ...placed]);
+      const blocks = collectBlocksForDate(cursor, weeklyConstraints, oneOffEvents, [...immutable, ...placed], settings);
       let free = subtractIntervals([[dayStartMinutes, dayEndMinutes]], blocks);
 
       const dailyCap = isWeekendISO(cursor) ? settings.dailyCapWeekendMinutes : settings.dailyCapWeekdayMinutes;

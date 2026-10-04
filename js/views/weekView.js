@@ -5,6 +5,7 @@
 // sont casées.
 
 import { getState, deleteTask, deleteWeeklyConstraint, deleteOneOffEvent } from '../store.js';
+import { travelBlockForDate } from '../travel.js';
 import { todayISO, addDaysISO, weekdayOfISO, timeToMinutes, minutesToTime, formatDateFR } from '../utils/date.js';
 
 const PX_PER_MINUTE = 0.75;
@@ -43,6 +44,8 @@ function collectDayItems(dateISO, state) {
     if (c.effectiveUntil && dateISO > c.effectiveUntil) continue;
     items.push({ kind: 'constraint', ref: c, start: c.startTime, end: c.endTime, label: `${CATEGORY_LABELS[c.category]} — ${c.label}`, color: '#6B7280' });
   }
+  const travel = travelBlockForDate(dateISO, state.weeklyConstraints, state.settings);
+  if (travel) items.push({ kind: 'travel', start: travel.start, end: travel.end, label: 'Trajet retour', color: '#6B7280' });
   for (const ev of state.oneOffEvents) {
     if (ev.date !== dateISO) continue;
     items.push({ kind: 'event', ref: ev, start: ev.startTime, end: ev.endTime, label: `${CATEGORY_LABELS[ev.category]} — ${ev.label}`, color: '#6B7280' });
@@ -198,7 +201,7 @@ function openDetailCard(item, state) {
       <div class="modal-actions">
         <button type="button" class="btn-secondary" data-action="close">Fermer</button>
         <button type="button" class="btn-secondary" data-action="edit">Modifier</button>
-        <button type="button" class="btn-primary btn-danger" data-action="delete">Supprimer</button>
+        ${item.kind === 'travel' ? '' : '<button type="button" class="btn-primary btn-danger" data-action="delete">Supprimer</button>'}
       </div>
     </div>
   `;

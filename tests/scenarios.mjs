@@ -25,6 +25,7 @@ import {
 } from '../js/colleChapters.js';
 import { timeToMinutes, addDaysISO, formatDateFR, formatDuration, combineDateTime } from '../js/utils/date.js';
 import { computeStreak } from '../js/stats.js';
+import { travelBlockForDate } from '../js/travel.js';
 
 let totalChecks = 0;
 let failedChecks = 0;
@@ -766,6 +767,49 @@ function scenarioL() {
 }
 
 // ---------------------------------------------------------------------------
+// Scénario M — Trajet retour après le dernier cours + évaluation "pour demain"
+// ---------------------------------------------------------------------------
+
+function scenarioM() {
+  const now = new Date(2026, 8, 28, 7, 0); // lundi 28/09, 07:00
+  const settings = { ...defaultSettings(), travelAfterClassMinutes: 40, dailyCapWeekdayMinutes: 600, dailyCapWeekendMinutes: 600 };
+  const constraints = [
+    createWeeklyConstraint({ label: 'Maths (502)', category: 'cours', daysOfWeek: [1], startTime: '08:00', endTime: '10:00' }),
+    createWeeklyConstraint({ label: 'Anglais (502)', category: 'cours', daysOfWeek: [1], startTime: '13:30', endTime: '15:30' }),
+    createWeeklyConstraint({ label: 'Physique (502)', category: 'cours', daysOfWeek: [2], startTime: '09:00', endTime: '11:00' }),
+  ];
+
+  // Beaucoup de travail à caser aujourd'hui (lundi) pour forcer l'usage de tout créneau libre.
+  const tasks = [
+    createTask({ subject: 'maths', type: 'dm', title: 'DM long', deadlineDate: addDaysISO(REF_DATE, 3), deadlineTime: '20:00', estimatedDurationMinutes: 540, priority: 3 }),
+    // Évaluation de physique "pour demain" (mardi), sans heure : à passer au cours de Physique (09:00).
+    createTask({ subject: 'physique', type: 'revision_ds', title: 'Évaluation physique', deadlineDate: addDaysISO(REF_DATE, 1), estimatedDurationMinutes: 90, priority: 3 }),
+  ];
+  const r = recomputeSchedule(now, { tasks, sessions: [], weeklyConstraints: constraints, oneOffEvents: [], settings });
+  const mondaySessions = r.sessions.filter((s) => s.date === REF_DATE);
+  const travel = travelBlockForDate(REF_DATE, constraints, settings);
+  const tuesdayTravel = travelBlockForDate(addDaysISO(REF_DATE, 1), constraints, settings);
+
+  console.log('\n=== Scénario M : trajet retour + évaluation pour demain ===');
+  console.log(`  Trajet lundi : ${travel.start}–${travel.end} ; mardi : ${tuesdayTravel.start}–${tuesdayTravel.end}`);
+  for (const s of r.sessions.filter((x) => x.date <= addDaysISO(REF_DATE, 1))) console.log(`  ${s.date} ${s.startTime}-${s.endTime} (${tasks.find((t) => t.id === s.taskId).title})`);
+
+  check('Le trajet retour de lundi commence à la fin du dernier cours (15:30) et dure 40 min', travel.start === '15:30' && travel.end === '16:10');
+  check('Le trajet retour de mardi suit le dernier cours de mardi (11:00 → 11:40)', tuesdayTravel.start === '11:00' && tuesdayTravel.end === '11:40');
+  check('Aucune session lundi pendant le trajet retour (15:30–16:10)', mondaySessions.every((s) => timeToMinutes(s.endTime) <= timeToMinutes('15:30') || timeToMinutes(s.startTime) >= timeToMinutes('16:10')));
+  // À 15:30 (le cours finit), un devoir dû ce soir démarre pile à la fin du trajet : 16:10.
+  const soir = createTask({ subject: 'maths', type: 'dm', title: 'Dû ce soir', deadlineDate: REF_DATE, deadlineTime: '20:00', estimatedDurationMinutes: 60, priority: 3 });
+  const rSoir = recomputeSchedule(new Date(2026, 8, 28, 15, 30), { tasks: [soir], sessions: [], weeklyConstraints: constraints, oneOffEvents: [], settings });
+  check('Un devoir dû ce soir démarre pile à la fin du trajet (16:10) : le trajet ne bloque pas toute la soirée', rSoir.sessions.length === 1 && rSoir.sessions[0].startTime === '16:10');
+
+  const evaluation = tasks[1];
+  const evalSessions = r.sessions.filter((s) => s.taskId === evaluation.id);
+  check("Évaluation de physique pour mardi (sans heure) : toutes les sessions finissent avant le cours de Physique de mardi (09:00)",
+    evalSessions.length > 0 && evalSessions.every((s) => s.date === REF_DATE || (s.date === addDaysISO(REF_DATE, 1) && timeToMinutes(s.endTime) <= timeToMinutes('09:00'))));
+  check("… et donc rien le lundi soir après 22:30 ni mardi après le cours", evalSessions.every((s) => s.date <= addDaysISO(REF_DATE, 1)));
+}
+
+// ---------------------------------------------------------------------------
 
 scenarioA();
 scenarioB();
@@ -779,6 +823,7 @@ scenarioI();
 scenarioJ();
 scenarioK();
 scenarioL();
+scenarioM();
 
 console.log(`\n${totalChecks - failedChecks}/${totalChecks} vérifications passées.`);
 if (failedChecks > 0) {

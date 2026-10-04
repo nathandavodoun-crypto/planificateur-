@@ -153,6 +153,9 @@ function renderGeneralSection(state) {
       <label>Rien après (couvre-feu)
         <input type="time" name="dayEndCutoff" value="${s.dayEndCutoff}" />
       </label>
+      <label>Trajet retour après le dernier cours (min)
+        <input type="number" name="travelAfterClassMinutes" min="0" step="5" value="${s.travelAfterClassMinutes ?? 0}" />
+      </label>
       <label>Durée max d'une session (min)
         <input type="number" name="maxSessionLengthMinutes" min="15" step="5" value="${s.maxSessionLengthMinutes}" />
       </label>
@@ -177,6 +180,7 @@ function renderGeneralSection(state) {
     updateSettings({
       dayStartTime: data.get('dayStartTime'),
       dayEndCutoff: data.get('dayEndCutoff'),
+      travelAfterClassMinutes: Number(data.get('travelAfterClassMinutes')),
       maxSessionLengthMinutes: Number(data.get('maxSessionLengthMinutes')),
       breakDurationMinutes: Number(data.get('breakDurationMinutes')),
       dailyCapWeekdayMinutes: Number(data.get('dailyCapWeekdayMinutes')),

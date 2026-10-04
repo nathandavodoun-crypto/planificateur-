@@ -5,6 +5,7 @@
 import { getState, getWarnings, setSessionStatus } from '../store.js';
 import { todayISO, addDaysISO, formatDateFR, combineDateTime } from '../utils/date.js';
 import { computeStreak } from '../stats.js';
+import { travelBlockForDate } from '../travel.js';
 
 const TYPE_BADGES = {
   preparation_colle: '🎤',
@@ -53,6 +54,8 @@ function dayBlocks(dateISO, state) {
       blocks.push({ start: c.startTime, end: c.endTime, label: `${CATEGORY_LABELS[c.category]} — ${c.label}` });
     }
   }
+  const travel = travelBlockForDate(dateISO, state.weeklyConstraints, state.settings);
+  if (travel) blocks.push({ start: travel.start, end: travel.end, label: 'Trajet retour' });
   for (const ev of state.oneOffEvents) {
     if (ev.date === dateISO) {
       let label = `${CATEGORY_LABELS[ev.category]} — ${ev.label}`;

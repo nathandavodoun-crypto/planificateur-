@@ -52,6 +52,10 @@ export function defaultSettings() {
     dayStartTime: '07:00',
     dayEndCutoff: '22:30',
 
+    // Temps pour rentrer après le dernier cours de la journée : rien n'est
+    // planifié pendant ce créneau (l'utilisateur rentre ~30-40 min après).
+    travelAfterClassMinutes: 40,
+
     maxSessionLengthMinutes: 90, // "1h30"
     minSessionLengthMinutes: 25, // évite de créer des miettes de quelques minutes
     breakDurationMinutes: 15, // pause obligatoire entre deux sessions consécutives
