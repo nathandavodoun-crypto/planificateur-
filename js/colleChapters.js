@@ -83,7 +83,11 @@ export function ensureRecurringColleInstances(state, now) {
   const todayIso = todayISO(now);
   for (const tmpl of state.recurringColleTemplates) {
     if (!tmpl.active) continue;
-    const hasUpcoming = state.oneOffEvents.some((e) => e.templateId === tmpl.id && e.date >= todayIso);
+    // "À venir" = pas encore terminée À CET INSTANT (et pas seulement "aujourd'hui") :
+    // dès que la colle du jour est finie, la semaine suivante est générée.
+    const hasUpcoming = state.oneOffEvents.some(
+      (e) => e.templateId === tmpl.id && combineDateTime(e.date, e.endTime).getTime() > now.getTime()
+    );
     if (hasUpcoming) continue;
     const nextDate = nextDateForDayOfWeek(now, tmpl.dayOfWeek, tmpl.endTime);
     state.oneOffEvents.push(

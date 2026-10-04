@@ -557,6 +557,10 @@ function renderConstraintsSection(state) {
       alert('Choisis au moins un jour.');
       return;
     }
+    if (data.get('endTime') <= data.get('startTime')) {
+      alert("L'heure de fin doit être après l'heure de début.");
+      return;
+    }
     addWeeklyConstraint({
       label: data.get('label'),
       category: data.get('category'),
@@ -653,6 +657,10 @@ function renderEventsSection(state) {
   form.addEventListener('submit', (event) => {
     event.preventDefault();
     const data = new FormData(form);
+    if (data.get('endTime') <= data.get('startTime')) {
+      alert("L'heure de fin doit être après l'heure de début.");
+      return;
+    }
     addOneOffEvent({
       label: data.get('label'),
       category: data.get('category'),

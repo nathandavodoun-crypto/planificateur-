@@ -14,6 +14,7 @@ import {
 import { TASK_TYPE_LABELS } from '../models.js';
 import { formatDateFR, formatDuration, todayISO, addDaysISO, weekdayOfISO } from '../utils/date.js';
 import { minutesWorkedBetween } from '../stats.js';
+import { effectiveDeadlineTime } from '../scheduler.js';
 
 function escapeHtml(str) {
   const div = document.createElement('div');
@@ -34,6 +35,15 @@ function computeStatus(task, sessions) {
   if (task.status === 'termine' || remaining <= 0) return { label: 'Terminé', remaining: 0 };
   if (doneMinutes > 0) return { label: 'En cours', remaining };
   return { label: 'À faire', remaining };
+}
+
+// Échéance affichée : l'heure saisie, sinon l'heure réellement utilisée par le
+// planificateur (ex. "avant 10:00" = début du cours concerné) pour qu'on voie
+// pourquoi un devoir "pour demain" n'est pas planifié le soir même.
+function deadlineLabel(task, state) {
+  if (task.deadlineTime) return task.deadlineTime;
+  const effective = effectiveDeadlineTime(task, state.weeklyConstraints, state.oneOffEvents, state.settings);
+  return effective === state.settings.dayEndCutoff ? '' : `(avant ${effective})`;
 }
 
 // Un devoir "manuel" seulement : les tâches auto-générées se gèrent depuis
@@ -113,7 +123,7 @@ function renderTasksSection(state) {
       </div>
       <div class="meta">
         ${escapeHtml(TASK_TYPE_LABELS[task.type] || task.type)} ·
-        échéance ${task.deadlineDate ? formatDateFR(task.deadlineDate) : '—'}${task.deadlineTime ? ' ' + task.deadlineTime : ''} ·
+        échéance ${task.deadlineDate ? formatDateFR(task.deadlineDate) : '—'} ${deadlineLabel(task, state)} ·
         ${statusLabel}${remaining > 0 ? ` (reste ${formatDuration(remaining)})` : ''}
       </div>
     `;
@@ -185,7 +195,7 @@ function renderCollesSection(state, onChange) {
         </div>
         <div class="meta">
           ${formatDateFR(event.date)} · ${event.startTime}–${event.endTime} ·
-          ${chapterTitles.length ? escapeHtml(chapterTitles.join(', ')) : 'aucun chapitre choisi'}
+          ${chapterTitles.length ? escapeHtml(chapterTitles.join(', ')) : 'aucun chapitre choisi — rien n\'est planifié tant que tu n\'en choisis pas (✎)'}
         </div>
       </div>
     `;

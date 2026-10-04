@@ -295,8 +295,29 @@ export function archiveChapter(id) {
 
 // ---- Réglages -----------------------------------------------------------
 
+// Bornes de sécurité : une case vidée par erreur dans Réglages donne 0, et une
+// durée maximale de session de 0 ferait boucler le découpage des tâches.
+function sanitizeSettings(settings) {
+  const atLeast = (key, min) => {
+    if (typeof settings[key] !== 'number' || Number.isNaN(settings[key]) || settings[key] < min) settings[key] = min;
+  };
+  atLeast('maxSessionLengthMinutes', 15);
+  atLeast('minSessionLengthMinutes', 5);
+  if (settings.minSessionLengthMinutes > settings.maxSessionLengthMinutes) settings.minSessionLengthMinutes = settings.maxSessionLengthMinutes;
+  atLeast('breakDurationMinutes', 0);
+  atLeast('dailyCapWeekdayMinutes', 0);
+  atLeast('dailyCapWeekendMinutes', 0);
+  atLeast('safetyMarginDays', 0);
+  atLeast('travelAfterClassMinutes', 0);
+  if (settings.dayStartTime >= settings.dayEndCutoff) {
+    settings.dayStartTime = '07:00';
+    settings.dayEndCutoff = '22:30';
+  }
+}
+
 export function updateSettings(changes) {
   Object.assign(state.settings, changes);
+  sanitizeSettings(state.settings);
   commit();
 }
 

@@ -5,6 +5,7 @@
 // il ne peut rien déclencher pendant que l'app est totalement fermée.
 
 import { getState } from './store.js';
+import { effectiveDeadlineTime } from './scheduler.js';
 import { todayISO, combineDateTime, minutesBetween } from './utils/date.js';
 
 // Déduplication en mémoire : évite de re-notifier à chaque passage de la
@@ -82,7 +83,8 @@ function checkDeadlinesApproaching(state, now) {
       .reduce((sum, s) => sum + s.durationMinutes, 0);
     if (doneMinutes >= task.estimatedDurationMinutes) continue;
 
-    const deadlineTime = task.deadlineTime || state.settings.dayEndCutoff;
+    // Même échéance que le planificateur (début du cours concerné si aucune heure n'est saisie).
+    const deadlineTime = effectiveDeadlineTime(task, state.weeklyConstraints, state.oneOffEvents, state.settings);
     const deadlineInstant = combineDateTime(task.deadlineDate, deadlineTime);
     const hoursUntil = minutesBetween(now, deadlineInstant) / 60;
     const key = `${task.id}:${todayIso}`;

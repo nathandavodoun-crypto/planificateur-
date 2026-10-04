@@ -258,6 +258,10 @@ function renderColleForm(wrapper, state) {
     const subjectLabel = state.settings.subjects.find((s) => s.id === subject)?.label || subject;
     const startTime = data.get('startTime');
     const endTime = data.get('endTime');
+    if (endTime <= startTime) {
+      alert("L'heure de fin doit être après l'heure de début.");
+      return;
+    }
     const recurring = data.get('recurring') === 'on';
 
     const chapterIds = [...form.querySelectorAll('input[name="chapterId"]:checked')].map((el) => el.value);

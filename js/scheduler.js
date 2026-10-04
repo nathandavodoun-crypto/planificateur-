@@ -92,6 +92,7 @@ function splitIntoN(remainingMinutes, n) {
  */
 export function splitEvenly(remainingMinutes, maxLen, minLen) {
   if (remainingMinutes <= 0) return [];
+  if (!(maxLen > 0)) return [round5(remainingMinutes)]; // réglage invalide : une seule session, jamais de boucle infinie
   if (remainingMinutes <= maxLen) return [round5(remainingMinutes)];
   let n = Math.ceil(remainingMinutes / maxLen);
   while (n > 1 && remainingMinutes / n < minLen) n--;
@@ -230,17 +231,33 @@ function normalizeText(str) {
 }
 
 /**
- * Un devoir "pour demain" se rend EN COURS, pas à 22h30 : sans heure précisée,
- * l'échéance est le début du cours concerné ce jour-là (cours dont le libellé
- * commence par la matière du devoir, ex. "Maths (502)" pour un devoir de
- * maths), à défaut le tout premier cours de la journée, à défaut la fin de
- * journée. Ne touche pas aux révisions/préparations de colle, qui ont leur
- * propre logique d'échéance.
+ * Heure limite RÉELLE d'une tâche (exportée : le moteur, les notifications et
+ * la liste des devoirs doivent tous parler de la même échéance).
+ *
+ * - Heure saisie par l'utilisateur : toujours respectée telle quelle.
+ * - Sinon, un devoir "pour demain" se rend EN COURS, pas à 22h30 : l'échéance
+ *   est le début du cours concerné ce jour-là (cours dont le libellé commence
+ *   par la matière, ex. "Maths (502)"), à défaut le premier cours de la
+ *   journée, à défaut la fin de journée.
+ * - Une évaluation (révision de DS) ou une préparation de colle saisie à la
+ *   main s'arrête d'abord au début du DS / de la colle déclaré ce jour-là
+ *   (même matière, ou DS à matières multiples), avant de se rabattre sur les
+ *   cours.
  */
-function defaultDeadlineTime(task, weeklyConstraints, settings) {
+export function effectiveDeadlineTime(task, weeklyConstraints, oneOffEvents, settings) {
+  if (task.deadlineTime) return task.deadlineTime;
+
   // Une préparation de colle liée à une colle a déjà une heure précise ; une saisie manuelle non.
   const usesCourseDeadline = HOMEWORK_TYPES.has(task.type) || (task.type === 'preparation_colle' && !task.linkedEventId);
   if (!usesCourseDeadline) return settings.dayEndCutoff;
+
+  const eventCategory = task.type === 'revision_ds' ? 'ds' : task.type === 'preparation_colle' ? 'colle' : null;
+  if (eventCategory) {
+    const events = (oneOffEvents || []).filter(
+      (e) => e.category === eventCategory && e.date === task.deadlineDate && (!e.subject || e.subject === task.subject)
+    );
+    if (events.length > 0) return events.map((e) => e.startTime).sort()[0];
+  }
 
   const weekday = weekdayOfISO(task.deadlineDate);
   const courses = weeklyConstraints.filter(
@@ -298,8 +315,13 @@ export function recomputeSchedule(now, data) {
     if (remaining <= 0) continue;
 
     const alreadyCount = generatedCountByTask.get(task.id) || 0;
-    const deadlineTime = task.deadlineTime || defaultDeadlineTime(task, weeklyConstraints, settings);
+    const deadlineTime = effectiveDeadlineTime(task, weeklyConstraints, oneOffEvents, settings);
     const deadlineInstant = combineDateTime(task.deadlineDate, deadlineTime);
+
+    // Réviser pour une colle ou un DS qui a déjà eu lieu n'a plus de sens :
+    // on n'en replanifie rien (contrairement à un devoir en retard, qui reste
+    // à faire même tardivement).
+    if ((task.type === 'preparation_colle' || task.type === 'revision_ds') && deadlineInstant.getTime() <= now.getTime()) continue;
 
     let durations;
     if (task.manualSessions && task.manualSessions.length) {
@@ -360,8 +382,10 @@ export function recomputeSchedule(now, data) {
   let cursor = todayIso;
   while (cursor <= horizonEnd && units.some((u) => !u.placed)) {
     const isToday = cursor === todayIso;
+    // Aujourd'hui : on démarre à la prochaine tranche de 5 minutes (13:13 → 13:15),
+    // pour des horaires lisibles plutôt que des sessions à 13:13.
     const dayStartMinutes = isToday
-      ? Math.max(nowMinutes(now), timeToMinutes(settings.dayStartTime))
+      ? Math.max(Math.ceil(nowMinutes(now) / 5) * 5, timeToMinutes(settings.dayStartTime))
       : timeToMinutes(settings.dayStartTime);
     const dayEndMinutes = timeToMinutes(settings.dayEndCutoff);
 

@@ -14,6 +14,7 @@ import {
   createOneOffEvent,
   createSession,
   createChapter,
+  createRecurringColleTemplate,
   DEFAULT_SUBJECTS,
 } from '../js/models.js';
 import {
@@ -810,6 +811,48 @@ function scenarioM() {
 }
 
 // ---------------------------------------------------------------------------
+// Scénario N — Audit : tâches périmées, colle récurrente, colle manuelle, réglages à 0
+// ---------------------------------------------------------------------------
+
+function scenarioN() {
+  const settings = defaultSettings();
+  const colleEvent = createOneOffEvent({ label: 'Colle de maths', category: 'colle', date: REF_DATE, startTime: '14:00', endTime: '14:20', subject: 'maths' });
+  const prep = () => createTask({ subject: 'maths', type: 'preparation_colle', title: 'Préparation colle maths', deadlineDate: REF_DATE, estimatedDurationMinutes: 60, priority: 2 });
+
+  console.log('\n=== Scénario N : audit (périmé, récurrent, manuel, réglages) ===');
+
+  // 1. Préparation manuelle "pour aujourd'hui" alors que la colle est déjà passée : on n'entasse rien.
+  const zombie = prep();
+  const rZombie = recomputeSchedule(new Date(2026, 8, 28, 20, 0), { tasks: [zombie], sessions: [], weeklyConstraints: [], oneOffEvents: [colleEvent], settings });
+  check("Préparation de colle dont la colle est passée (lundi 20:00, colle 14:00) : aucune session fantôme", rZombie.sessions.length === 0);
+  check("… et aucun avertissement parasite", rZombie.warnings.length === 0);
+
+  // 2. Préparation manuelle sans heure : à rendre au début de la colle, pas à 22:30.
+  const manual = prep();
+  const rManual = recomputeSchedule(new Date(2026, 8, 27, 15, 0), { tasks: [manual], sessions: [], weeklyConstraints: [], oneOffEvents: [colleEvent], settings });
+  check("Préparation de colle manuelle : finie avant le début de la colle (14:00)", rManual.sessions.length > 0 && rManual.sessions.every((x) => x.date < REF_DATE || timeToMinutes(x.endTime) <= timeToMinutes('14:00')));
+
+  // 3. Colle récurrente : dès que celle du jour est finie, la suivante existe (une seule fois).
+  const template = createRecurringColleTemplate({ subject: 'maths', label: 'Colle de maths', dayOfWeek: 1, startTime: '14:00', endTime: '14:20' });
+  const today = createOneOffEvent({ label: 'Colle de maths', category: 'colle', date: REF_DATE, startTime: '14:00', endTime: '14:20', subject: 'maths', templateId: template.id });
+  const data = { tasks: [], sessions: [], weeklyConstraints: [], oneOffEvents: [today], chapters: [], recurringColleTemplates: [template], settings };
+  const afterEnd = new Date(2026, 8, 28, 15, 0);
+  ensureRecurringColleInstances(data, afterEnd);
+  ensureRecurringColleInstances(data, afterEnd);
+  const generated = data.oneOffEvents.filter((e) => e.templateId === template.id && e.date === addDaysISO(REF_DATE, 7));
+  check("Colle récurrente du lundi terminée à 14:20 : la colle du lundi suivant est générée dès 15:00, une seule fois", generated.length === 1 && data.oneOffEvents.length === 2);
+  const data2 = { ...data, oneOffEvents: [today] };
+  ensureRecurringColleInstances(data2, new Date(2026, 8, 28, 13, 0));
+  check("Avant la fin de la colle du jour (13:00), rien n'est ajouté", data2.oneOffEvents.length === 1);
+
+  // 4. Réglages mis à zéro par erreur : le moteur ne boucle pas et place quand même le travail.
+  const zeroSettings = { ...defaultSettings(), maxSessionLengthMinutes: 0, minSessionLengthMinutes: 0 };
+  const dm = createTask({ subject: 'maths', type: 'dm', title: 'DM', deadlineDate: addDaysISO(REF_DATE, 3), deadlineTime: '20:00', estimatedDurationMinutes: 120, priority: 2 });
+  const rZero = recomputeSchedule(new Date(2026, 8, 28, 7, 0), { tasks: [dm], sessions: [], weeklyConstraints: [], oneOffEvents: [], settings: zeroSettings });
+  check("Durée maximale de session à 0 : le calcul se termine et planifie le devoir", rZero.sessions.length > 0);
+}
+
+// ---------------------------------------------------------------------------
 
 scenarioA();
 scenarioB();
@@ -824,6 +867,7 @@ scenarioJ();
 scenarioK();
 scenarioL();
 scenarioM();
+scenarioN();
 
 console.log(`\n${totalChecks - failedChecks}/${totalChecks} vérifications passées.`);
 if (failedChecks > 0) {
