@@ -8,6 +8,7 @@ import {
   deleteTask,
   deleteOneOffEvent,
   setColleChapters,
+  setDsDailyRevision,
   addChapter,
   archiveChapter,
 } from '../store.js';
@@ -59,6 +60,7 @@ export function renderTaskListView(container) {
 
   wrapper.appendChild(renderTasksSection(state));
   wrapper.appendChild(renderCollesSection(state, () => rerender(container)));
+  wrapper.appendChild(renderDsSection(state, () => rerender(container)));
   wrapper.appendChild(renderChaptersSection(state));
 
   container.appendChild(wrapper);
@@ -159,6 +161,65 @@ function renderTasksSection(state) {
 // ---------------------------------------------------------------------------
 // Colles à venir
 // ---------------------------------------------------------------------------
+
+// DS à venir : un bouton par DS pour garder ou couper sa révision quotidienne
+// (les séances elles-mêmes apparaissent dans les vues Jour / Semaine).
+function renderDsSection(state, onChange) {
+  const section = document.createElement('div');
+  section.className = 'section';
+  section.innerHTML = '<h2>DS à venir</h2>';
+
+  const nowTime = Date.now();
+  const cfg = state.settings.dsDailyRevision || {};
+  const upcoming = state.oneOffEvents
+    .filter((e) => e.category === 'ds' && new Date(e.date + 'T' + e.endTime).getTime() > nowTime)
+    .sort((a, b) => (a.date < b.date ? -1 : 1));
+
+  if (upcoming.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'empty-state';
+    empty.textContent = "Aucun DS à venir — importe le planning dans Réglages, ou ajoute-en un.";
+    section.appendChild(empty);
+    return section;
+  }
+
+  upcoming.slice(0, 8).forEach((event, i) => {
+    const subj = subjectMeta(event.subject, state.settings);
+    const on = cfg.enabled !== false && !event.skipDailyRevision;
+    const task = event.linkedTaskId ? state.tasks.find((t) => t.id === event.linkedTaskId) : null;
+    const item = document.createElement('div');
+    item.className = 'list-item colle-item';
+    item.style.borderLeft = `4px solid ${subj.color}`;
+    item.style.setProperty('--stagger', i);
+    item.innerHTML = `
+      <div>
+        <div><strong>${escapeHtml(event.label)}</strong></div>
+        <div class="meta">
+          ${formatDateFR(event.date)} · ${event.startTime}–${event.endTime} ·
+          ${on && task ? `révision ${formatDuration(task.dailyMinutes)} par jour, ${Math.round(task.estimatedDurationMinutes / task.dailyMinutes)} jours avant` : 'pas de révision quotidienne'}
+        </div>
+      </div>
+    `;
+    const btn = document.createElement('button');
+    btn.className = 'btn-undo';
+    btn.textContent = on ? '✓' : '✗';
+    btn.style.color = on ? '#10B981' : '';
+    btn.title = on ? 'Désactiver la révision quotidienne de ce DS' : 'Activer la révision quotidienne de ce DS';
+    btn.addEventListener('click', () => {
+      setDsDailyRevision(event.id, !on);
+      onChange();
+    });
+    item.appendChild(btn);
+    section.appendChild(item);
+  });
+  if (upcoming.length > 8) {
+    const more = document.createElement('p');
+    more.className = 'empty-state';
+    more.textContent = `… et ${upcoming.length - 8} autres DS (liste complète dans Réglages).`;
+    section.appendChild(more);
+  }
+  return section;
+}
 
 function renderCollesSection(state, onChange) {
   const section = document.createElement('div');

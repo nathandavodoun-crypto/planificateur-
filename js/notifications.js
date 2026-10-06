@@ -78,6 +78,7 @@ function checkDeadlinesApproaching(state, now) {
   for (const task of state.tasks) {
     if (task.status === 'termine') continue;
     if (!task.deadlineDate) continue;
+    if (task.dailyMinutes) continue; // révision quotidienne de DS : déjà rappelée par ses séances du jour
     const doneMinutes = state.sessions
       .filter((s) => s.taskId === task.id && s.status === 'terminee')
       .reduce((sum, s) => sum + s.durationMinutes, 0);

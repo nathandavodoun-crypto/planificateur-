@@ -20,6 +20,7 @@ import {
 import {
   ensureRecurringColleInstances,
   ensureSpacedRepetitionTasks,
+  ensureDsRevisionTasks,
   setColleChapters,
   handleTaskCompletionSideEffects,
   importChapters,
@@ -903,6 +904,74 @@ function scenarioO() {
 }
 
 // ---------------------------------------------------------------------------
+// Scénario P — Révision quotidienne avant chaque DS
+// ---------------------------------------------------------------------------
+
+function scenarioP() {
+  const now = new Date(2026, 9, 6, 10, 0); // mardi 06/10/2026, 10:00
+  const settings = defaultSettings();
+  const mkDs = (date, label, subject) => createOneOffEvent({ category: 'ds', label, subject, date, startTime: '08:00', endTime: '12:00' });
+  const build = (events, cfgSettings = settings, tasks = []) => {
+    const data = { tasks, sessions: [], weeklyConstraints: [], oneOffEvents: events, chapters: [], recurringColleTemplates: [], settings: cfgSettings };
+    ensureDsRevisionTasks(data, now);
+    const r = recomputeSchedule(now, data);
+    return { data, r };
+  };
+
+  console.log('\n=== Scénario P : révision quotidienne avant chaque DS ===');
+
+  const physique = mkDs('2026-10-10', 'DS Physique', 'physique');
+  const { data, r } = build([physique]);
+  const task = data.tasks.find((t) => t.linkedEventId === physique.id);
+  const mine = r.sessions.filter((x) => task && x.taskId === task.id).sort((a, b) => (a.date < b.date ? -1 : 1));
+  console.log('  DS Physique samedi 10/10 :', mine.map((x) => `${x.date} ${x.startTime}-${x.endTime}`).join(' | '));
+  check('Une tâche de révision est créée automatiquement pour le DS (matière physique)', !!task && task.subject === 'physique' && task.type === 'revision_ds');
+  check('Une séance de 60 min chaque jour restant : mar 06, mer 07, jeu 08, ven 09', mine.map((x) => x.date).join() === '2026-10-06,2026-10-07,2026-10-08,2026-10-09' && mine.every((x) => x.durationMinutes === 60));
+  check('Rien le jour du DS (samedi) ni après', mine.every((x) => x.date < '2026-10-10'));
+  check('Aucune session de révision ne tombe à moins d\'un jour de la précédente : une seule par jour', new Set(mine.map((x) => x.date)).size === mine.length);
+
+  // DS double : 1,5× la durée, matière = la première citée. Matière nulle déduite du libellé.
+  const double = mkDs('2026-10-17', 'DS Physique / Chimie', null);
+  const d2 = build([double]);
+  const t2 = d2.data.tasks.find((t) => t.linkedEventId === double.id);
+  const s2 = d2.r.sessions.filter((x) => t2 && x.taskId === t2.id);
+  check('DS « Physique / Chimie » (matière non renseignée) : matière déduite = physique, 90 min par jour', !!t2 && t2.subject === 'physique' && s2.length > 0 && s2.every((x) => x.durationMinutes === 90));
+  check('… seulement dans les 6 jours précédant le DS (pas avant dimanche 11/10)', s2.every((x) => x.date >= '2026-10-11' && x.date <= '2026-10-16'));
+
+  // Désactivé pour ce DS : aucune tâche.
+  const skip = mkDs('2026-10-10', 'DS Physique', 'physique');
+  skip.skipDailyRevision = true;
+  const d3 = build([skip]);
+  check('DS désactivé individuellement : aucune révision quotidienne', d3.data.tasks.length === 0 && d3.r.sessions.length === 0);
+  // Désactivé globalement.
+  const d4 = build([mkDs('2026-10-10', 'DS Physique', 'physique')], { ...settings, dsDailyRevision: { ...settings.dsDailyRevision, enabled: false } });
+  check('Fonction désactivée dans les réglages : aucune révision', d4.data.tasks.length === 0);
+
+  // Idempotence + DS passé.
+  ensureDsRevisionTasks(data, now);
+  ensureDsRevisionTasks(data, now);
+  check('Plusieurs recalculs ne dupliquent pas la tâche', data.tasks.filter((t) => t.linkedEventId === physique.id).length === 1);
+  const past = mkDs('2026-10-03', 'DS Maths / Info', null);
+  const d5 = build([past]);
+  check('DS déjà passé : aucune révision', d5.data.tasks.length === 0 && d5.r.sessions.length === 0);
+
+  // Travail des 26 DS de l'année : une tâche par DS à venir.
+  const many = ['2026-10-10', '2026-10-17', '2026-11-07', '2026-11-14', '2027-05-22'].map((d, i) => mkDs(d, `DS n°${i + 1}`, 'maths'));
+  const d6 = build(many);
+  check('Un DS par samedi de l\'année : chacun a sa tâche de révision', d6.data.tasks.filter((t) => t.type === 'revision_ds').length === 5);
+  check('… et aucune session n\'est placée loin du DS (chaque séance est dans les 6 jours avant son DS)', d6.r.sessions.every((x) => {
+    const t = d6.data.tasks.find((tt) => tt.id === x.taskId);
+    const ds = many.find((e) => e.id === t.linkedEventId);
+    return x.date < ds.date && x.date >= addDaysISO(ds.date, -6);
+  }));
+  check('… sans dépasser le plafond journalier', (() => {
+    const per = new Map();
+    for (const x of d6.r.sessions) per.set(x.date, (per.get(x.date) || 0) + x.durationMinutes);
+    return [...per.values()].every((m) => m <= settings.dailyCapWeekdayMinutes + 5);
+  })());
+}
+
+// ---------------------------------------------------------------------------
 
 scenarioA();
 scenarioB();
@@ -919,6 +988,7 @@ scenarioL();
 scenarioM();
 scenarioN();
 scenarioO();
+scenarioP();
 
 console.log(`\n${totalChecks - failedChecks}/${totalChecks} vérifications passées.`);
 if (failedChecks > 0) {

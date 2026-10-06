@@ -6,7 +6,7 @@
 // événements et chapitres qui servent ensuite d'entrée au moteur pur.
 
 import { createTask, createOneOffEvent, createChapter } from './models.js';
-import { todayISO, weekdayOfISO, addDaysISO, combineDateTime } from './utils/date.js';
+import { todayISO, weekdayOfISO, addDaysISO, combineDateTime, round5 } from './utils/date.js';
 
 function findTask(state, id) {
   return state.tasks.find((t) => t.id === id);
@@ -102,6 +102,62 @@ export function ensureRecurringColleInstances(state, now) {
         createdVia: 'recurring_colle_template',
       })
     );
+  }
+}
+
+function normalizeText(str) {
+  return String(str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+/** Matière d'un DS : celle de l'événement, sinon la première citée dans son libellé ("Physique / Chimie" → physique). */
+function guessDsSubject(event, subjects) {
+  if (event.subject) return event.subject;
+  const label = normalizeText(event.label);
+  let best = null;
+  for (const subj of subjects) {
+    const idx = label.indexOf(normalizeText(subj.label));
+    if (idx >= 0 && (best === null || idx < best.idx)) best = { idx, id: subj.id };
+  }
+  return best ? best.id : 'autre';
+}
+
+/**
+ * Révision quotidienne avant chaque DS : une tâche auto-générée par DS à venir,
+ * rattachée à l'événement (linkedEventId / event.linkedTaskId). Le moteur en
+ * tire UNE séance par jour sur la fenêtre qui précède le DS (voir scheduler.js).
+ * Un DS double ("Physique / Chimie") reçoit 1,5× la durée quotidienne.
+ */
+export function ensureDsRevisionTasks(state, now) {
+  const cfg = state.settings.dsDailyRevision;
+  for (const event of state.oneOffEvents) {
+    if (event.category !== 'ds') continue;
+    const existing = event.linkedTaskId ? findTask(state, event.linkedTaskId) : null;
+    const wanted = cfg && cfg.enabled !== false && !event.skipDailyRevision;
+    if (!wanted) {
+      if (existing && existing.type === 'revision_ds' && existing.dailyMinutes) deleteTaskCascade(state, existing.id);
+      continue;
+    }
+    if (combineDateTime(event.date, event.endTime).getTime() <= now.getTime()) continue; // DS passé : on garde l'historique tel quel
+
+    const isDouble = String(event.label || '').includes('/');
+    const perDay = round5(cfg.minutesPerDay * (isDouble ? 1.5 : 1));
+    const days = Math.max(1, Math.round(cfg.daysBefore));
+    const fields = {
+      subject: guessDsSubject(event, state.settings.subjects),
+      title: `Révision — ${event.label || 'DS'}`,
+      deadlineDate: addDaysISO(event.date, -1), // la veille au soir au plus tard
+      deadlineTime: state.settings.dayEndCutoff,
+      estimatedDurationMinutes: perDay * days,
+      dailyMinutes: perDay,
+    };
+    if (existing) {
+      const changed = Object.keys(fields).some((k) => existing[k] !== fields[k]);
+      if (changed) Object.assign(existing, fields, { updatedAt: now.getTime() });
+    } else {
+      const task = createTask({ ...fields, type: 'revision_ds', priority: 2, linkedEventId: event.id });
+      state.tasks.push(task);
+      event.linkedTaskId = task.id;
+    }
   }
 }
 
@@ -211,10 +267,10 @@ export function deleteTaskCascade(state, taskId) {
       const ch = findChapter(state, chId);
       if (ch && ch.fusedIntoEventId === task.linkedEventId) ch.fusedIntoEventId = null;
     }
-    if (task.linkedEventId) {
-      const ev = findEvent(state, task.linkedEventId);
-      if (ev && ev.linkedTaskId === taskId) ev.linkedTaskId = null;
-    }
+  }
+  if (task.linkedEventId) {
+    const ev = findEvent(state, task.linkedEventId);
+    if (ev && ev.linkedTaskId === taskId) ev.linkedTaskId = null;
   }
 
   state.tasks = state.tasks.filter((t) => t.id !== taskId);

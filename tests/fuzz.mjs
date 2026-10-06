@@ -5,7 +5,7 @@
 
 import { recomputeSchedule, effectiveDeadlineTime } from '../js/scheduler.js';
 import { defaultSettings, createTask, createWeeklyConstraint, createOneOffEvent, createChapter, DEFAULT_SUBJECTS } from '../js/models.js';
-import { ensureRecurringColleInstances, ensureSpacedRepetitionTasks, setColleChapters, importChapters } from '../js/colleChapters.js';
+import { ensureRecurringColleInstances, ensureSpacedRepetitionTasks, ensureDsRevisionTasks, setColleChapters, importChapters } from '../js/colleChapters.js';
 import { travelBlockForDate } from '../js/travel.js';
 import { timeToMinutes, minutesToTime, addDaysISO, todayISO, weekdayOfISO, isWeekendISO, combineDateTime, nowMinutes } from '../js/utils/date.js';
 
@@ -112,6 +112,7 @@ function genScenario(seed) {
   }
   ensureRecurringColleInstances(state, now);
   ensureSpacedRepetitionTasks(state, now);
+  ensureDsRevisionTasks(state, now);
 
   return { now, state, todayIso };
 }
@@ -200,6 +201,7 @@ export function checkScenario(seed, tamper) {
     const sum = placed.reduce((acc, s) => acc + s.durationMinutes, 0);
     const slackRounding = 5 * Math.max(1, placed.length);
     if (sum > t.estimatedDurationMinutes + slackRounding) fail('R7 plus de travail placé que demandé', `${t.title} ${sum} > ${t.estimatedDurationMinutes}`);
+    if (t.dailyMinutes) continue; // révision quotidienne de DS : les jours sans place sont signalés ou sautés par construction
     if (sum + slackRounding < t.estimatedDurationMinutes && !warned.has(t.id)) fail('R7 travail manquant sans avertissement', `${t.title}(${t.type}) ${sum}/${t.estimatedDurationMinutes} échéance ${t.deadlineDate}`);
   }
 

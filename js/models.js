@@ -77,6 +77,14 @@ export function defaultSettings() {
       shrinkPerDayMinutes: 10, // taille visée = durée max - 10 min par jour restant (plancher ci-dessus)
     },
 
+    // Révision quotidienne avant chaque DS : une séance par jour, chaque jour
+    // de la fenêtre qui précède le DS (le DS d'un samedi : du dimanche au vendredi).
+    dsDailyRevision: {
+      enabled: true,
+      minutesPerDay: 60,
+      daysBefore: 6,
+    },
+
     minGapDaysSameTaskDefault: 0,
     minGapDaysDsRevision: 1,
 
@@ -147,6 +155,7 @@ export function createTask(partial) {
     difficulty: null, // optionnel, informatif uniquement (non utilisé par le moteur v1)
     manualSessions: null, // null => découpage automatique
     linkedEventId: null,
+    dailyMinutes: null, // pour 'revision_ds' auto-généré : minutes à réviser CHAQUE jour avant le DS
     chapterId: null, // pour 'revision_espacee' : le chapitre concerné
     linkedChapterIds: [], // pour 'preparation_colle' auto-généré : chapitres fusionnés
     status: 'a_faire',

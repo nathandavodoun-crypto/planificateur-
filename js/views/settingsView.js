@@ -174,6 +174,18 @@ function renderGeneralSection(state) {
       </label>
     </div>
     <label class="checkbox-row">
+      <input type="checkbox" name="dsDailyEnabled" ${s.dsDailyRevision?.enabled !== false ? 'checked' : ''} />
+      <span>Révision quotidienne avant chaque DS : une séance par jour pendant la période qui précède (le DS lui-même n'est pas concerné).</span>
+    </label>
+    <div class="settings-grid">
+      <label>Minutes de révision de DS par jour
+        <input type="number" name="dsMinutesPerDay" min="15" step="5" value="${s.dsDailyRevision?.minutesPerDay ?? 60}" />
+      </label>
+      <label>Nombre de jours avant le DS
+        <input type="number" name="dsDaysBefore" min="1" step="1" value="${s.dsDailyRevision?.daysBefore ?? 6}" />
+      </label>
+    </div>
+    <label class="checkbox-row">
       <input type="checkbox" name="progressiveSpread" ${s.progressiveSpread?.enabled !== false ? 'checked' : ''} />
       <span>Répartition progressive : plus l'échéance est loin, plus un devoir est découpé en petites séances étalées sur plusieurs jours (et décalé des autres devoirs du même jour).</span>
     </label>
@@ -183,6 +195,11 @@ function renderGeneralSection(state) {
     event.preventDefault();
     const data = new FormData(form);
     updateSettings({
+      dsDailyRevision: {
+        enabled: data.get('dsDailyEnabled') === 'on',
+        minutesPerDay: Number(data.get('dsMinutesPerDay')),
+        daysBefore: Number(data.get('dsDaysBefore')),
+      },
       progressiveSpread: { ...defaultSettings().progressiveSpread, ...s.progressiveSpread, enabled: data.get('progressiveSpread') === 'on' },
       dayStartTime: data.get('dayStartTime'),
       dayEndCutoff: data.get('dayEndCutoff'),

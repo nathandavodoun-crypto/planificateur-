@@ -342,6 +342,41 @@ export function recomputeSchedule(now, data) {
     // à faire même tardivement).
     if ((task.type === 'preparation_colle' || task.type === 'revision_ds') && deadlineInstant.getTime() <= now.getTime()) continue;
 
+    // Révision quotidienne d'un DS (auto-générée) : une séance par jour, chaque
+    // jour de la fenêtre avant le DS, collée À CE JOUR-LÀ (pas de report en
+    // cascade) ; un jour sans place est signalé plutôt qu'empilé sur le suivant.
+    if (task.type === 'revision_ds' && task.linkedEventId && task.dailyMinutes > 0) {
+      const daysTotal = Math.max(1, Math.round(task.estimatedDurationMinutes / task.dailyMinutes));
+      const lastDay = task.deadlineDate;
+      const firstDay = maxISO([todayIso, addDaysISO(lastDay, -(daysTotal - 1))]);
+      const duration = Math.min(task.dailyMinutes, settings.maxSessionLengthMinutes);
+      const dayEndMinutes = timeToMinutes(settings.dayEndCutoff);
+      const doneDates = new Set(immutable.filter((x) => x.taskId === task.id).map((x) => x.date));
+      let index = alreadyCount;
+      for (let d = firstDay; d <= lastDay; d = addDaysISO(d, 1)) {
+        if (doneDates.has(d)) continue;
+        // Plus assez de journée devant soi aujourd'hui : on n'en fait pas un échec.
+        if (d === todayIso && Math.ceil(nowMinutes(now) / 5) * 5 + duration > dayEndMinutes) continue;
+        units.push({
+          taskId: task.id,
+          subject: task.subject,
+          taskType: task.type,
+          sessionIndex: index++,
+          durationMinutes: duration,
+          deadlineDateISO: lastDay,
+          deadlineMinutes: timeToMinutes(deadlineTime),
+          overdue: false,
+          notBeforeDate: d,
+          onlyOnDay: true,
+          // Traitée comme "à rendre ce jour-là" : passe avant le travail moins urgent.
+          slackMinutes: minutesBetween(now, combineDateTime(d, settings.dayEndCutoff)) - duration,
+          priority: task.priority,
+          placed: false,
+        });
+      }
+      continue;
+    }
+
     let durations;
     if (task.manualSessions && task.manualSessions.length) {
       // Le découpage manuel de l'utilisateur l'emporte toujours.
@@ -449,6 +484,7 @@ export function recomputeSchedule(now, data) {
         const eligible = units.filter((u) => {
           if (u.placed) return false;
           if (u.notBeforeDate > cursor) return false;
+          if (u.onlyOnDay && u.notBeforeDate !== cursor) return false;
           if (!u.overdue && cursor > u.deadlineDateISO) return false; // jamais après l'échéance
           const otherDates = placedDatesByTask.get(u.taskId);
           if (!otherDates || otherDates.length === 0) return true;
@@ -508,10 +544,19 @@ export function recomputeSchedule(now, data) {
   }
 
   // --- 6. Avertissements ------------------------------------------------------
-  const warnings = [];
   const unplacedByTask = new Map();
+  const warnings = [];
   for (const u of units) {
-    if (u.placed) continue;
+    if (u.placed || !u.onlyOnDay) continue;
+    const task = tasksById.get(u.taskId);
+    warnings.push({
+      type: 'DAILY_REVISION_SKIPPED',
+      taskId: u.taskId,
+      message: `Pas de place pour « ${task ? task.title : 'la révision'} » le ${formatDateFR(u.notBeforeDate)} (journée pleine).`,
+    });
+  }
+  for (const u of units) {
+    if (u.placed || u.onlyOnDay) continue;
     if (!unplacedByTask.has(u.taskId)) unplacedByTask.set(u.taskId, []);
     unplacedByTask.get(u.taskId).push(u);
   }

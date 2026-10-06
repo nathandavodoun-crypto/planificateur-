@@ -12,6 +12,7 @@ import { recomputeSchedule } from './scheduler.js';
 import {
   ensureRecurringColleInstances,
   ensureSpacedRepetitionTasks,
+  ensureDsRevisionTasks,
   setColleChapters as setColleChaptersImpl,
   cascadeCleanupOneOffEvent,
   deleteTaskCascade,
@@ -75,6 +76,7 @@ function recompute() {
   // sessions que recomputeSchedule jette et régénère à chaque appel.
   ensureRecurringColleInstances(state, now);
   ensureSpacedRepetitionTasks(state, now);
+  ensureDsRevisionTasks(state, now);
 
   const result = recomputeSchedule(now, state);
   state.sessions = result.sessions;
@@ -222,6 +224,14 @@ export function deleteOneOffEvent(id) {
   commit();
 }
 
+/** Active/désactive la révision quotidienne d'un DS précis (la tâche auto-générée est créée ou retirée au recalcul). */
+export function setDsDailyRevision(eventId, enabled) {
+  const event = state.oneOffEvents.find((e) => e.id === eventId);
+  if (!event) return;
+  event.skipDailyRevision = !enabled;
+  commit();
+}
+
 /** Affecte des chapitres à une colle (crée/màj sa tâche de préparation, gère la fusion). */
 export function setColleChapters(eventId, chapterIds) {
   setColleChaptersImpl(state, eventId, chapterIds, new Date());
@@ -313,6 +323,11 @@ function sanitizeSettings(settings) {
     const ps = settings.progressiveSpread;
     if (typeof ps.minChunkMinutes !== 'number' || ps.minChunkMinutes < 15) ps.minChunkMinutes = 15;
     if (typeof ps.shrinkPerDayMinutes !== 'number' || ps.shrinkPerDayMinutes < 0) ps.shrinkPerDayMinutes = 0;
+  }
+  if (settings.dsDailyRevision) {
+    const ds = settings.dsDailyRevision;
+    if (typeof ds.minutesPerDay !== 'number' || ds.minutesPerDay < 15) ds.minutesPerDay = 15;
+    if (typeof ds.daysBefore !== 'number' || ds.daysBefore < 1) ds.daysBefore = 1;
   }
   if (settings.dayStartTime >= settings.dayEndCutoff) {
     settings.dayStartTime = '07:00';
