@@ -67,6 +67,16 @@ export function defaultSettings() {
     // placement, elle influence juste la répartition — voir scheduler.js).
     safetyMarginDays: 1,
 
+    // Répartition progressive : plus l'échéance d'un devoir est lointaine, plus
+    // il est découpé en petites séances étalées (et décalées par rapport aux
+    // autres devoirs pour le même jour). Proche de l'échéance : séances longues
+    // et regroupées, comme avant.
+    progressiveSpread: {
+      enabled: true,
+      minChunkMinutes: 30, // séance la plus courte visée, même très loin de l'échéance
+      shrinkPerDayMinutes: 10, // taille visée = durée max - 10 min par jour restant (plancher ci-dessus)
+    },
+
     minGapDaysSameTaskDefault: 0,
     minGapDaysDsRevision: 1,
 

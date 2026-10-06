@@ -853,6 +853,56 @@ function scenarioN() {
 }
 
 // ---------------------------------------------------------------------------
+// Scénario O — Répartition progressive : plus c'est loin, plus c'est divisé et étalé
+// ---------------------------------------------------------------------------
+
+function scenarioO() {
+  const now = new Date(2026, 8, 28, 7, 0); // lundi 28/09, 07:00
+  const settings = defaultSettings();
+  const mk = (subject, title, days, minutes, time) => createTask({ subject, type: 'exercices', title, deadlineDate: addDaysISO(REF_DATE, days), deadlineTime: time || '20:00', estimatedDurationMinutes: minutes, priority: 2 });
+  const run = (tasks, cfg = settings) => recomputeSchedule(now, { tasks, sessions: [], weeklyConstraints: [], oneOffEvents: [], settings: cfg });
+  const sessionsOf = (r, t) => r.sessions.filter((x) => x.taskId === t.id);
+  const daysOf = (r, t) => new Set(sessionsOf(r, t).map((x) => x.date)).size;
+
+  console.log('\n=== Scénario O : répartition progressive ===');
+
+  // Même travail (120 min), échéance de plus en plus lointaine.
+  const near = mk('maths', 'Exos proches', 2, 120);
+  const mid = mk('maths', 'Exos à 5 jours', 5, 120);
+  const far = mk('maths', 'Exos à 14 jours', 14, 120);
+  const counts = [near, mid, far].map((t) => sessionsOf(run([t]), t).length);
+  console.log(`  120 min : échéance J+2 → ${counts[0]} séance(s), J+5 → ${counts[1]}, J+14 → ${counts[2]}`);
+  check('Plus l\'échéance est loin, plus le devoir est découpé (J+2 ≤ J+5 ≤ J+14, et J+14 > J+2)', counts[0] <= counts[1] && counts[1] <= counts[2] && counts[2] > counts[0]);
+  const rFar = run([far]);
+  check('Un devoir lointain est étalé sur plusieurs jours (≥ 3 jours différents)', daysOf(rFar, far) >= 3);
+  check('Les séances restent courtes quand l\'échéance est lointaine (≤ 40 min)', sessionsOf(rFar, far).every((x) => x.durationMinutes <= 40));
+  check('Durée totale conservée (120 min)', sessionsOf(rFar, far).reduce((a, x) => a + x.durationMinutes, 0) === 120);
+
+  // Plusieurs exercices pour le même jour lointain : décalés, pas tous empilés au même endroit.
+  const group = [mk('maths', 'Exo A', 12, 90), mk('physique', 'Exo B', 12, 90), mk('chimie', 'Exo C', 12, 90), mk('maths', 'Exo D', 12, 90)];
+  const rGroup = run(group);
+  const perDay = new Map();
+  for (const x of rGroup.sessions) perDay.set(x.date, (perDay.get(x.date) || 0) + x.durationMinutes);
+  const firstDays = group.map((t) => sessionsOf(rGroup, t).map((x) => x.date).sort()[0]);
+  console.log('  4 exercices pour J+12 :');
+  for (const [d, m] of [...perDay.entries()].sort()) console.log(`    ${d} : ${m} min`);
+  check('4 exercices pour le même jour lointain : travail réparti sur au moins 5 jours', perDay.size >= 5);
+  check('… la charge est lissée : jamais plus de 60 min un même jour', Math.max(...perDay.values()) <= 60);
+  check('… ils ne commencent pas tous le même jour', new Set(firstDays).size >= 2);
+  check('… et aucun jour ne dépasse le plafond journalier', [...perDay.values()].every((m) => m <= settings.dailyCapWeekdayMinutes + 5));
+  check('… rien n\'est signalé impossible', rGroup.warnings.length === 0);
+  check('… tout est planifié avant l\'échéance', rGroup.sessions.every((x) => x.date <= addDaysISO(REF_DATE, 12)));
+
+  // Mode désactivé : ancien comportement (une séance par exercice de 90 min, au plus tôt).
+  const off = { ...settings, progressiveSpread: { ...settings.progressiveSpread, enabled: false } };
+  const rOff = run([mk('maths', 'Exo off', 14, 60)], off);
+  check('Mode désactivé : un exercice de 60 min reste une seule séance', rOff.sessions.length === 1);
+  // Échéance proche : pas de découpage artificiel.
+  const rNear = run([mk('maths', 'Exo proche', 1, 60)]);
+  check('Échéance demain : un exercice de 60 min reste une seule séance', rNear.sessions.length === 1);
+}
+
+// ---------------------------------------------------------------------------
 
 scenarioA();
 scenarioB();
@@ -868,6 +918,7 @@ scenarioK();
 scenarioL();
 scenarioM();
 scenarioN();
+scenarioO();
 
 console.log(`\n${totalChecks - failedChecks}/${totalChecks} vérifications passées.`);
 if (failedChecks > 0) {

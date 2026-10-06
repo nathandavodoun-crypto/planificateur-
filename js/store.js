@@ -309,6 +309,11 @@ function sanitizeSettings(settings) {
   atLeast('dailyCapWeekendMinutes', 0);
   atLeast('safetyMarginDays', 0);
   atLeast('travelAfterClassMinutes', 0);
+  if (settings.progressiveSpread) {
+    const ps = settings.progressiveSpread;
+    if (typeof ps.minChunkMinutes !== 'number' || ps.minChunkMinutes < 15) ps.minChunkMinutes = 15;
+    if (typeof ps.shrinkPerDayMinutes !== 'number' || ps.shrinkPerDayMinutes < 0) ps.shrinkPerDayMinutes = 0;
+  }
   if (settings.dayStartTime >= settings.dayEndCutoff) {
     settings.dayStartTime = '07:00';
     settings.dayEndCutoff = '22:30';

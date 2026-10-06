@@ -15,6 +15,7 @@ import {
   exportBackup,
   importBackup,
 } from '../store.js';
+import { defaultSettings } from '../models.js';
 import { formatDateFR } from '../utils/date.js';
 import {
   isSupported as notificationsSupported,
@@ -172,12 +173,17 @@ function renderGeneralSection(state) {
         <input type="number" name="safetyMarginDays" min="0" step="1" value="${s.safetyMarginDays}" />
       </label>
     </div>
+    <label class="checkbox-row">
+      <input type="checkbox" name="progressiveSpread" ${s.progressiveSpread?.enabled !== false ? 'checked' : ''} />
+      <span>Répartition progressive : plus l'échéance est loin, plus un devoir est découpé en petites séances étalées sur plusieurs jours (et décalé des autres devoirs du même jour).</span>
+    </label>
     <button type="submit" class="btn-primary">Enregistrer</button>
   `;
   form.addEventListener('submit', (event) => {
     event.preventDefault();
     const data = new FormData(form);
     updateSettings({
+      progressiveSpread: { ...defaultSettings().progressiveSpread, ...s.progressiveSpread, enabled: data.get('progressiveSpread') === 'on' },
       dayStartTime: data.get('dayStartTime'),
       dayEndCutoff: data.get('dayEndCutoff'),
       travelAfterClassMinutes: Number(data.get('travelAfterClassMinutes')),

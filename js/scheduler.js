@@ -225,6 +225,9 @@ function lastSubjectOnDate(dateISO, sessionsList, tasksById) {
 
 // Types dont l'échéance tombe EN COURS (rendu de devoir, évaluation en classe).
 const HOMEWORK_TYPES = new Set(['dm', 'exercices', 'lecture', 'autre', 'revision_ds']);
+// Types étalés par la répartition progressive (les révisions de DS, de colle et
+// espacées ont déjà leur propre logique de fenêtre).
+const SPREADABLE_TYPES = new Set(['dm', 'exercices', 'lecture', 'autre']);
 
 function normalizeText(str) {
   return String(str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -306,6 +309,22 @@ export function recomputeSchedule(now, data) {
 
   // --- 2 & 3. Travail restant par tâche, découpé en sessions ----------------
   const units = [];
+
+  // Devoirs à étaler qui partagent la même échéance : chacun reçoit un rang,
+  // pour décaler leurs séances au lieu de tout empiler les mêmes jours.
+  const spreadCfg = settings.progressiveSpread;
+  const spreadRankByTask = new Map();
+  const spreadGroupSize = new Map();
+  if (spreadCfg && spreadCfg.enabled) {
+    for (const task of tasks) {
+      if (task.status === 'termine' || !task.deadlineDate || !SPREADABLE_TYPES.has(task.type)) continue;
+      if (task.manualSessions && task.manualSessions.length) continue;
+      if (task.estimatedDurationMinutes - (doneMinutesByTask.get(task.id) || 0) <= 0) continue;
+      const rank = spreadGroupSize.get(task.deadlineDate) || 0;
+      spreadRankByTask.set(task.id, rank);
+      spreadGroupSize.set(task.deadlineDate, rank + 1);
+    }
+  }
   for (const task of tasks) {
     if (task.status === 'termine') continue; // marquée terminée manuellement : rien à planifier
     if (!task.deadlineDate) continue; // garde-fou : pas d'échéance => pas planifiable
@@ -341,7 +360,33 @@ export function recomputeSchedule(now, data) {
 
     const { earliestDay, targetLastDay } = computeWindowForTask(task, todayIso, settings);
     const minGapDays = task.type === 'revision_ds' ? settings.minGapDaysDsRevision : settings.minGapDaysSameTaskDefault;
-    const notBeforeDates = distributeNotBeforeDates(durations.length, earliestDay, targetLastDay, minGapDays);
+
+    // Répartition progressive : à plus de 2 jours de l'échéance, la taille visée
+    // d'une séance diminue avec le nombre de jours restants (plus loin = plus
+    // de séances courtes), sans jamais dépasser un jour par séance.
+    let windowStart = earliestDay;
+    let windowEnd = targetLastDay;
+    if (spreadRankByTask.has(task.id)) {
+      const daysSpan = diffDaysISO(targetLastDay, earliestDay);
+      if (daysSpan >= 2) {
+        const chunk = Math.max(spreadCfg.minChunkMinutes, settings.maxSessionLengthMinutes - spreadCfg.shrinkPerDayMinutes * daysSpan);
+        const maxPieces = Math.max(1, Math.floor(remaining / Math.max(1, settings.minSessionLengthMinutes)));
+        const pieces = Math.min(Math.ceil(remaining / chunk), daysSpan + 1, maxPieces);
+        if (pieces > durations.length) durations = splitIntoN(remaining, pieces);
+        // Plusieurs devoirs pour la même échéance : chacun reçoit une fenêtre
+        // décalée (début plus tardif, fin plus précoce selon son rang) pour que
+        // leurs séances s'intercalent au lieu de s'empiler aux mêmes jours.
+        const group = spreadGroupSize.get(task.deadlineDate) || 1;
+        if (group > 1 && daysSpan >= 3) {
+          const step = daysSpan / durations.length;
+          const rank = spreadRankByTask.get(task.id);
+          windowStart = addDaysISO(earliestDay, Math.round((rank * step) / group));
+          windowEnd = addDaysISO(targetLastDay, -Math.round(((group - 1 - rank) * step) / group));
+          if (windowEnd < windowStart) windowEnd = windowStart;
+        }
+      }
+    }
+    const notBeforeDates = distributeNotBeforeDates(durations.length, windowStart, windowEnd, minGapDays);
 
     const slackMinutes = minutesBetween(now, deadlineInstant) - remaining;
 
