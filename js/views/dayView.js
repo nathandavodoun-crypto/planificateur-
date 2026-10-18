@@ -37,7 +37,7 @@ const CATEGORY_LABELS = {
 };
 
 function subjectMeta(subjectId, settings) {
-  return (settings.subjects || []).find((s) => s.id === subjectId) || { label: subjectId, color: '#6B7280' };
+  return (settings.subjects || []).find((s) => s.id === subjectId) || { label: subjectId, color: '#56627f' };
 }
 
 function escapeHtml(str) {
@@ -179,7 +179,7 @@ function renderBlockItem(b) {
 function renderSessionItem(session, task, settings, now) {
   const el = document.createElement('div');
   el.className = `timeline-item session status-${session.status}`;
-  const subj = task ? subjectMeta(task.subject, settings) : { label: '?', color: '#6B7280' };
+  const subj = task ? subjectMeta(task.subject, settings) : { label: '?', color: '#56627f' };
   el.style.setProperty('--subject-color', subj.color);
 
   const time = document.createElement('div');

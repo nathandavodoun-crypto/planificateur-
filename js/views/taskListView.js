@@ -24,7 +24,7 @@ function escapeHtml(str) {
 }
 
 function subjectMeta(subjectId, settings) {
-  return (settings.subjects || []).find((s) => s.id === subjectId) || { label: subjectId, color: '#6B7280' };
+  return (settings.subjects || []).find((s) => s.id === subjectId) || { label: subjectId, color: '#56627f' };
 }
 
 // Statut affiché, dérivé des sessions plutôt que du champ `task.status`
@@ -203,7 +203,7 @@ function renderDsSection(state, onChange) {
     const btn = document.createElement('button');
     btn.className = 'btn-undo';
     btn.textContent = on ? '✓' : '✗';
-    btn.style.color = on ? '#10B981' : '';
+    btn.style.color = on ? '#8be9d4' : '';
     btn.title = on ? 'Désactiver la révision quotidienne de ce DS' : 'Activer la révision quotidienne de ce DS';
     btn.addEventListener('click', () => {
       setDsDailyRevision(event.id, !on);

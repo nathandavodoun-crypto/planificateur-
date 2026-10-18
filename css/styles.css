@@ -1,30 +1,39 @@
-:root {
-  --bg: #f4f5f7;
-  --surface: #ffffff;
-  --text: #1a1a1a;
-  --text-muted: #6b7280;
-  --border: #e5e7eb;
-  --primary: #2563eb;
-  --primary-text: #ffffff;
-  --danger: #dc2626;
-  --warning-bg: #fef3c7;
-  --warning-border: #f59e0b;
-  --warning-text: #78350f;
-  --radius: 12px;
-  --nav-height: 64px;
-}
+/* ============================================================================
+   Direction artistique « Éveil » — noir profond, lumière bleu glacé qui
+   descend du ciel (arbre lumineux), brume rose (fleur incandescente) et
+   rubans translucides en mouvement. Toujours sombre.
+   ========================================================================== */
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #111214;
-    --surface: #1c1d20;
-    --text: #f3f4f6;
-    --text-muted: #9ca3af;
-    --border: #2d2f34;
-    --warning-bg: #3a2f10;
-    --warning-border: #f59e0b;
-    --warning-text: #fde68a;
-  }
+:root {
+  color-scheme: dark;
+
+  --bg: #02030a;
+  --bg-2: #060914;
+  --surface: rgba(11, 16, 34, 0.78);
+  --surface-solid: #090d1c;
+  --surface-raised: rgba(20, 28, 56, 0.85);
+  --text: #eaf3ff;
+  --text-muted: #8d9cbc;
+  --border: rgba(140, 200, 255, 0.15);
+  --border-strong: rgba(160, 215, 255, 0.34);
+
+  --primary: #6cb8ff;
+  --primary-2: #b4e0ff;
+  --primary-text: #02030a;
+  --rose: #ff8fb0;
+  --rose-2: #ffc4d6;
+  --aqua: #8be9d4;
+  --danger: #ff6b8b;
+
+  --warning-bg: rgba(255, 143, 176, 0.09);
+  --warning-border: rgba(255, 143, 176, 0.5);
+  --warning-text: #ffd5e0;
+
+  --glow-blue: 0 0 22px rgba(108, 184, 255, 0.28);
+  --glow-rose: 0 0 22px rgba(255, 143, 176, 0.3);
+
+  --radius: 14px;
+  --nav-height: 68px;
 }
 
 * {
@@ -42,15 +51,22 @@ html, body {
   height: 100%;
 }
 
+html {
+  background: var(--bg);
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: var(--bg);
   color: var(--text);
   -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
 }
 
 #app {
-  padding: 12px 16px calc(var(--nav-height) + 24px);
+  position: relative;
+  z-index: 1;
+  padding: 14px 16px calc(var(--nav-height) + 28px);
   max-width: 560px;
   margin: 0 auto;
   min-height: 100vh;
@@ -60,48 +76,198 @@ h1, h2, h3 {
   margin: 0 0 12px;
 }
 
+/* Titres de section : lettrage penché, dégradé blanc → bleu acier (le « SHAAAA »). */
+h2 {
+  font-size: 22px;
+  font-weight: 800;
+  font-style: italic;
+  letter-spacing: 0.02em;
+  background: linear-gradient(100deg, #ffffff 10%, #9fd3ff 55%, #5d8fd6 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  width: fit-content;
+  padding-right: 6px;
+  filter: drop-shadow(0 0 12px rgba(108, 184, 255, 0.35));
+}
+h3 {
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  color: var(--primary-2);
+}
+
+/* ---- Décor d'ambiance (fixe, derrière tout) ---- */
+
+.ambient {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 60% at 50% 120%, rgba(255, 120, 160, 0.17), transparent 60%),
+    radial-gradient(90% 50% at 50% -10%, rgba(80, 150, 255, 0.2), transparent 65%),
+    var(--bg);
+}
+
+/* Faisceau de lumière qui tombe du ciel. */
+.ambient .beam {
+  position: absolute;
+  top: -8%;
+  left: 50%;
+  width: 78vw;
+  max-width: 460px;
+  height: 78%;
+  transform: translateX(-50%);
+  background: linear-gradient(to bottom, rgba(190, 228, 255, 0.5), rgba(110, 175, 255, 0.16) 45%, transparent 90%);
+  clip-path: polygon(38% 0, 62% 0, 100% 100%, 0 100%);
+  filter: blur(26px);
+  opacity: 0.55;
+}
+
+/* Fleur incandescente en filigrane. */
+.ambient .flower {
+  position: absolute;
+  right: -90px;
+  bottom: 70px;
+  width: 340px;
+  height: 340px;
+  opacity: 0.28;
+  mix-blend-mode: screen;
+  filter: blur(1.5px) saturate(1.5) drop-shadow(0 0 34px rgba(255, 110, 165, 0.65));
+}
+
+/* Rubans translucides. */
+.ambient .ribbons {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.38;
+}
+.ambient .ribbons path {
+  fill: none;
+  stroke: url(#ribbon-grad);
+  stroke-linecap: round;
+  stroke-width: 2;
+}
+
+/* Particules de lumière qui montent. */
+.ambient .mote {
+  position: absolute;
+  bottom: -20px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #dff0ff 0%, rgba(130, 195, 255, 0.5) 45%, transparent 70%);
+  box-shadow: 0 0 10px rgba(150, 205, 255, 0.7);
+  opacity: 0;
+}
+.ambient .mote:nth-child(odd) {
+  background: radial-gradient(circle, #ffe3ec 0%, rgba(255, 150, 185, 0.5) 45%, transparent 70%);
+  box-shadow: 0 0 10px rgba(255, 160, 190, 0.7);
+}
+.ambient .mote:nth-child(1) { left: 6%; }
+.ambient .mote:nth-child(2) { left: 14%; width: 4px; height: 4px; }
+.ambient .mote:nth-child(3) { left: 23%; width: 8px; height: 8px; }
+.ambient .mote:nth-child(4) { left: 31%; }
+.ambient .mote:nth-child(5) { left: 40%; width: 4px; height: 4px; }
+.ambient .mote:nth-child(6) { left: 48%; width: 7px; height: 7px; }
+.ambient .mote:nth-child(7) { left: 57%; }
+.ambient .mote:nth-child(8) { left: 65%; width: 5px; height: 5px; }
+.ambient .mote:nth-child(9) { left: 73%; width: 8px; height: 8px; }
+.ambient .mote:nth-child(10) { left: 81%; }
+.ambient .mote:nth-child(11) { left: 89%; width: 4px; height: 4px; }
+.ambient .mote:nth-child(12) { left: 95%; width: 6px; height: 6px; }
+
 .view {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-/* ---- Navigation basse ---- */
+/* ---- Navigation basse : verre noir, filet de lumière ---- */
 
 .bottom-nav {
   position: fixed;
+  z-index: 50;
   bottom: 0;
   left: 0;
   right: 0;
-  height: var(--nav-height);
-  background: var(--surface);
+  height: calc(var(--nav-height) + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: linear-gradient(to top, rgba(2, 3, 10, 0.96), rgba(6, 9, 20, 0.88));
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
   border-top: 1px solid var(--border);
   display: flex;
   max-width: 560px;
   margin: 0 auto;
 }
+.bottom-nav::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 8%;
+  right: 8%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(150, 210, 255, 0.85), rgba(255, 150, 185, 0.7), transparent);
+  opacity: 0.7;
+}
 
 .nav-btn {
+  position: relative;
   flex: 1;
   background: none;
   border: none;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 4px;
   cursor: pointer;
+  transition: color 0.25s ease;
 }
 
 .nav-btn .nav-icon {
-  font-size: 20px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+}
+.nav-btn .nav-icon svg {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: filter 0.25s ease, transform 0.25s ease;
 }
 
 .nav-btn.active {
-  color: var(--primary);
-  font-weight: 600;
+  color: var(--primary-2);
+  font-weight: 700;
+}
+.nav-btn.active .nav-icon svg {
+  filter: drop-shadow(0 0 6px rgba(130, 195, 255, 0.95)) drop-shadow(0 0 14px rgba(108, 184, 255, 0.6));
+  transform: translateY(-1px);
+}
+.nav-btn.active::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 28%;
+  right: 28%;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, #bfe4ff, transparent);
+  box-shadow: 0 0 12px rgba(150, 210, 255, 0.9);
 }
 
 /* ---- Vue Jour ---- */
@@ -116,34 +282,45 @@ h1, h2, h3 {
 .date-label {
   background: none;
   border: none;
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 22px;
+  font-weight: 800;
+  font-style: italic;
+  letter-spacing: 0.02em;
   text-transform: capitalize;
   cursor: pointer;
   flex: 1;
   text-align: center;
+  background: linear-gradient(100deg, #ffffff 10%, #a9d8ff 60%, #7fa9e8 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 14px rgba(108, 184, 255, 0.4));
 }
 
 .icon-btn {
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 50%;
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
   font-size: 18px;
   cursor: pointer;
-  color: var(--text);
+  color: var(--primary-2);
+  box-shadow: var(--glow-blue), inset 0 0 12px rgba(108, 184, 255, 0.08);
 }
 
 .streak-badge {
   align-self: center;
-  background: var(--warning-bg);
-  color: var(--warning-text);
-  border: 1px solid var(--warning-border);
+  background: linear-gradient(120deg, rgba(255, 143, 176, 0.16), rgba(108, 184, 255, 0.12));
+  color: var(--rose-2);
+  border: 1px solid rgba(255, 143, 176, 0.5);
   border-radius: 999px;
-  padding: 4px 14px;
+  padding: 5px 16px;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  box-shadow: var(--glow-rose);
+  text-align: center;
 }
 
 .warning-banner {
@@ -153,34 +330,38 @@ h1, h2, h3 {
   border-radius: var(--radius);
   padding: 12px 14px;
   font-size: 14px;
+  box-shadow: inset 0 0 24px rgba(255, 143, 176, 0.06);
 }
 .warning-banner strong {
   display: block;
   margin-bottom: 4px;
+  color: var(--rose-2);
 }
 
 .timeline {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 9px;
 }
 
 .timeline-item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 10px 12px;
+  padding: 11px 13px;
 }
 
 .timeline-item .time {
   font-variant-numeric: tabular-nums;
-  font-size: 13px;
+  font-size: 12.5px;
   color: var(--text-muted);
   width: 92px;
   flex-shrink: 0;
+  letter-spacing: 0.02em;
 }
 
 .timeline-item .content {
@@ -190,15 +371,35 @@ h1, h2, h3 {
 }
 
 .timeline-item.block {
-  opacity: 0.7;
+  opacity: 0.62;
+  background: rgba(8, 11, 24, 0.55);
+  border-style: dashed;
 }
 
+/* Une séance : une « veine » de lumière à la couleur de la matière. */
 .timeline-item.session {
-  border-left: 4px solid var(--subject-color, var(--primary));
+  --c: var(--subject-color, var(--primary));
+  border-color: color-mix(in srgb, var(--c) 38%, transparent);
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--c) 16%, transparent), transparent 55%),
+    var(--surface);
+  box-shadow: 0 0 22px color-mix(in srgb, var(--c) 14%, transparent);
+  overflow: hidden;
+}
+.timeline-item.session::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(to bottom, transparent, var(--c), #ffffff, var(--c), transparent);
+  background-size: 100% 220%;
+  box-shadow: 0 0 14px var(--c);
 }
 
 .timeline-item.session.status-terminee {
-  opacity: 0.55;
+  opacity: 0.5;
 }
 .timeline-item.session.status-terminee .content {
   text-decoration: line-through;
@@ -206,17 +407,19 @@ h1, h2, h3 {
 
 .timeline-item.session.status-non_faite {
   opacity: 0.55;
-  border-left-color: var(--danger);
+  --c: var(--danger);
 }
 
 .subject-pill {
   display: inline-block;
-  color: #fff;
+  color: #04060f;
   font-size: 11px;
-  font-weight: 600;
-  padding: 2px 8px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  padding: 2px 9px;
   border-radius: 999px;
   margin-right: 6px;
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.12);
 }
 
 .actions {
@@ -226,22 +429,24 @@ h1, h2, h3 {
 }
 
 .actions button {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
-  border: 1px solid var(--border);
-  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  background: rgba(10, 14, 30, 0.8);
   font-size: 15px;
   cursor: pointer;
 }
-.btn-done { color: #16a34a; }
+.btn-done { color: var(--aqua); box-shadow: 0 0 12px rgba(139, 233, 212, 0.25); }
 .btn-miss { color: var(--danger); }
 .btn-undo { color: var(--text-muted); }
 
 .empty-state {
   color: var(--text-muted);
   text-align: center;
-  padding: 24px 0;
+  padding: 28px 0;
+  font-style: italic;
+  letter-spacing: 0.02em;
 }
 
 /* ---- Formulaires ---- */
@@ -257,13 +462,15 @@ form.event-form {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 16px;
+  box-shadow: 0 0 30px rgba(60, 110, 200, 0.07), inset 0 1px 0 rgba(180, 225, 255, 0.06);
 }
 
 label {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font-size: 13px;
+  font-size: 12.5px;
+  letter-spacing: 0.03em;
   color: var(--text-muted);
   min-width: 0;
 }
@@ -272,12 +479,18 @@ input, select, textarea {
   width: 100%;
   min-width: 0;
   font-size: 16px; /* évite le zoom automatique sur iOS */
-  padding: 10px;
+  padding: 11px 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg);
+  border-radius: 10px;
+  background: rgba(2, 4, 12, 0.7);
   color: var(--text);
   font-family: inherit;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(108, 184, 255, 0.16), 0 0 20px rgba(108, 184, 255, 0.25);
 }
 
 .days-picker {
@@ -290,9 +503,9 @@ input, select, textarea {
   flex-direction: row;
   align-items: center;
   gap: 4px;
-  background: var(--bg);
+  background: rgba(2, 4, 12, 0.7);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 6px 10px;
   font-size: 13px;
   cursor: pointer;
@@ -304,24 +517,33 @@ input, select, textarea {
 }
 
 .btn-primary {
-  background: var(--primary);
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(120deg, #3f86e8 0%, #6cb8ff 55%, #b4e0ff 100%);
   color: var(--primary-text);
   border: none;
-  border-radius: 8px;
-  padding: 12px;
+  border-radius: 12px;
+  padding: 13px;
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 800;
+  letter-spacing: 0.03em;
   cursor: pointer;
+  box-shadow: 0 0 26px rgba(108, 184, 255, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 
 .btn-secondary {
-  background: var(--surface);
+  background: rgba(14, 20, 42, 0.8);
   color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  padding: 11px;
   font-size: 14px;
   cursor: pointer;
+  box-shadow: inset 0 0 16px rgba(108, 184, 255, 0.07);
+}
+.btn-secondary:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .btn-danger {
@@ -342,7 +564,7 @@ input, select, textarea {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 10px 12px;
+  padding: 11px 13px;
   font-size: 14px;
 }
 
@@ -352,7 +574,7 @@ input, select, textarea {
 }
 
 .task-item.is-done {
-  opacity: 0.55;
+  opacity: 0.5;
 }
 .task-item.is-done strong {
   text-decoration: line-through;
@@ -361,15 +583,15 @@ input, select, textarea {
 .list-item button {
   background: none;
   border: none;
-  color: var(--danger);
+  color: var(--rose);
   font-size: 18px;
   cursor: pointer;
   flex-shrink: 0;
 }
 
 /* Un item avec plusieurs actions (ex. colle : modifier + supprimer) ne doit
-   pas peindre TOUS ses boutons en rouge "suppression" — seul .btn-delete
-   (ou l'absence de classe, cas simple) garde le rouge par défaut ci-dessus. */
+   pas peindre TOUS ses boutons en couleur "suppression" — seul .btn-delete
+   (ou l'absence de classe, cas simple) garde la teinte rose par défaut. */
 .colle-item .actions .btn-undo,
 .task-item .actions .btn-undo {
   color: var(--text-muted);
@@ -399,18 +621,19 @@ input, select, textarea {
 .notice {
   font-size: 13px;
   color: var(--text-muted);
-  background: var(--bg);
-  border-radius: 8px;
+  background: rgba(2, 4, 12, 0.6);
+  border: 1px solid var(--border);
+  border-radius: 10px;
   padding: 10px 12px;
   white-space: pre-line;
 }
 .notice code {
-  background: var(--surface);
+  background: var(--surface-solid);
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 1px 5px;
   font-size: 12px;
-  color: var(--text);
+  color: var(--primary-2);
 }
 
 /* ---- Sélecteur d'onglets du formulaire d'ajout (Devoir/Colle/Chapitre) ---- */
@@ -418,8 +641,9 @@ input, select, textarea {
 .form-tabs {
   display: flex;
   gap: 8px;
-  background: var(--bg);
-  border-radius: 10px;
+  background: rgba(2, 4, 12, 0.7);
+  border: 1px solid var(--border);
+  border-radius: 14px;
   padding: 4px;
 }
 
@@ -427,17 +651,19 @@ input, select, textarea {
   flex: 1;
   background: none;
   border: none;
-  border-radius: 8px;
-  padding: 8px;
+  border-radius: 10px;
+  padding: 9px;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-muted);
   cursor: pointer;
+  transition: background 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;
 }
 
 .form-tab.active {
-  background: var(--surface);
-  color: var(--primary);
+  background: linear-gradient(120deg, rgba(108, 184, 255, 0.22), rgba(255, 143, 176, 0.14));
+  color: #fff;
+  box-shadow: 0 0 18px rgba(108, 184, 255, 0.25), inset 0 0 0 1px rgba(150, 210, 255, 0.4);
 }
 
 .checkbox-row {
@@ -447,6 +673,7 @@ input, select, textarea {
 }
 .checkbox-row input {
   width: auto;
+  accent-color: var(--primary);
 }
 
 /* ---- Import groupé de chapitres ---- */
@@ -462,9 +689,9 @@ input, select, textarea {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  background: var(--bg);
+  background: rgba(2, 4, 12, 0.6);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 10px;
   padding-right: 32px;
   position: relative;
@@ -476,7 +703,7 @@ input, select, textarea {
   right: 8px;
   background: none;
   border: none;
-  color: var(--danger);
+  color: var(--rose);
   font-size: 16px;
   cursor: pointer;
 }
@@ -492,7 +719,9 @@ input, select, textarea {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: radial-gradient(70% 60% at 50% 40%, rgba(40, 80, 160, 0.25), rgba(0, 0, 0, 0.82));
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -501,11 +730,13 @@ input, select, textarea {
 }
 
 .modal-card {
-  background: var(--surface);
-  border-radius: var(--radius);
-  padding: 20px;
+  background: linear-gradient(160deg, rgba(20, 30, 62, 0.97), rgba(8, 11, 24, 0.98));
+  border: 1px solid var(--border-strong);
+  border-radius: 18px;
+  padding: 22px;
   max-width: 360px;
   width: 100%;
+  box-shadow: 0 0 50px rgba(108, 184, 255, 0.25), 0 0 100px rgba(255, 143, 176, 0.08);
 }
 .modal-card p {
   margin: 0 0 16px;
@@ -530,7 +761,7 @@ input, select, textarea {
   max-height: 70vh;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--surface);
+  background: rgba(4, 6, 16, 0.85);
   -webkit-overflow-scrolling: touch;
 }
 
@@ -548,7 +779,7 @@ input, select, textarea {
   position: sticky;
   top: 0;
   z-index: 3;
-  background: var(--surface);
+  background: rgba(4, 6, 16, 0.96);
   border-bottom: 1px solid var(--border);
 }
 
@@ -558,7 +789,7 @@ input, select, textarea {
   z-index: 2;
   width: 46px;
   flex-shrink: 0;
-  background: var(--surface);
+  background: rgba(4, 6, 16, 0.96);
 }
 
 .week-day-header {
@@ -567,13 +798,14 @@ input, select, textarea {
   text-align: center;
   padding: 8px 4px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-muted);
   text-transform: capitalize;
   border-left: 1px solid var(--border);
 }
 .week-day-header.is-today {
-  color: var(--primary);
+  color: var(--rose-2);
+  text-shadow: 0 0 12px rgba(255, 143, 176, 0.8);
 }
 
 .week-hour-label {
@@ -597,107 +829,42 @@ input, select, textarea {
   position: absolute;
   left: 2px;
   right: 2px;
-  border-radius: 4px;
-  color: #fff;
+  border-radius: 6px;
+  color: #04060f;
   font-size: 10px;
+  font-weight: 700;
   line-height: 1.25;
   padding: 2px 4px;
   overflow: hidden;
   cursor: pointer;
+  box-shadow: 0 0 14px rgba(255, 255, 255, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 
 .week-block-fixed {
-  opacity: 0.6;
+  background: rgba(90, 120, 190, 0.2) !important;
+  border: 1px dashed rgba(150, 200, 255, 0.35);
+  color: #c3d6fa;
+  font-weight: 500;
+  box-shadow: none;
 }
 
-/* ---- Animations légères (jamais au détriment de prefers-reduced-motion) ---- */
+/* ---- Vacances & repos ---- */
 
-@media (prefers-reduced-motion: no-preference) {
-  @keyframes view-enter {
-    from { opacity: 0; transform: translateY(14px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  .view {
-    animation: view-enter 0.3s cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  @keyframes modal-fade-in {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-  @keyframes modal-pop-in {
-    from { opacity: 0; transform: scale(0.9); }
-    to { opacity: 1; transform: scale(1); }
-  }
-  .modal-overlay {
-    animation: modal-fade-in 0.15s ease;
-  }
-  .modal-card {
-    animation: modal-pop-in 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
-  }
-
-  /* Toute l'app se re-rend entièrement à chaque changement (même esprit que
-     le moteur de planification) : chaque élément de liste est donc un NOUVEAU
-     nœud à chaque clic, pas juste un style qui change — une `transition`
-     seule ne jouerait jamais. On utilise une vraie `animation` d'entrée, avec
-     un petit décalage en cascade (--stagger, posé en JS sur chaque item) pour
-     un effet de liste qui se déploie plutôt qu'un bloc figé. */
-  @keyframes item-enter {
-    from { opacity: 0; transform: translateY(10px) scale(0.98); }
-    to { opacity: 1; transform: translateY(0) scale(1); }
-  }
-  .timeline-item,
-  .list-item,
-  .week-block {
-    animation: item-enter 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
-    /* Plafonné pour qu'une longue liste ne traîne pas en longueur : au-delà
-       de 12 éléments, le reste apparaît toujours avec le même petit délai. */
-    animation-delay: calc(min(var(--stagger, 0), 12) * 30ms);
-  }
-
-  @keyframes check-pop {
-    0% { transform: scale(1); }
-    40% { transform: scale(1.12); }
-    100% { transform: scale(1); }
-  }
-  .timeline-item.session.status-terminee {
-    animation: item-enter 0.3s cubic-bezier(0.22, 1, 0.36, 1) both, check-pop 0.35s ease;
-    /* Le raccourci `animation` ci-dessus réinitialiserait le délai en cascade
-       hérité de la règle .timeline-item générale — on le reprécise ici pour
-       les deux animations (entrée en cascade, puis le petit "pop" après). */
-    animation-delay: calc(min(var(--stagger, 0), 12) * 30ms), 0.15s;
-  }
-
-  button {
-    transition: transform 0.1s ease;
-  }
-  button:active {
-    transform: scale(0.96);
-  }
-
-  @keyframes streak-pop {
-    0% { transform: scale(0.7) rotate(-8deg); opacity: 0; }
-    60% { transform: scale(1.12) rotate(4deg); opacity: 1; }
-    100% { transform: scale(1) rotate(0); opacity: 1; }
-  }
-  .streak-badge {
-    animation: streak-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-  }
-}
-
-/* Vacances & repos */
 .vacation-item {
   flex-direction: column;
   align-items: stretch;
   gap: 10px;
+  border-color: rgba(255, 143, 176, 0.3);
+  background: linear-gradient(150deg, rgba(255, 143, 176, 0.07), transparent 55%), var(--surface);
 }
 .vacation-report {
   margin-top: 8px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: var(--surface-2, rgba(127, 127, 127, 0.12));
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: rgba(2, 4, 12, 0.6);
+  border: 1px solid var(--border);
   font-size: 0.85rem;
-  line-height: 1.5;
+  line-height: 1.55;
 }
 .vacation-actions {
   display: flex;
@@ -708,4 +875,192 @@ input, select, textarea {
 .vacation-actions .btn-secondary {
   color: var(--text);
   flex: 1;
+}
+
+/* ============================================================================
+   Animations (jamais au détriment de prefers-reduced-motion)
+   ========================================================================== */
+
+@media (prefers-reduced-motion: no-preference) {
+  /* -- Décor vivant -- */
+
+  @keyframes beam-breathe {
+    0%, 100% { opacity: 0.4; transform: translateX(-50%) scaleX(0.94); }
+    50% { opacity: 0.72; transform: translateX(-50%) scaleX(1.06); }
+  }
+  .ambient .beam {
+    animation: beam-breathe 9s ease-in-out infinite;
+  }
+
+  @keyframes flower-spin {
+    from { transform: rotate(0deg) scale(1); }
+    50% { transform: rotate(180deg) scale(1.08); }
+    to { transform: rotate(360deg) scale(1); }
+  }
+  .ambient .flower {
+    animation: flower-spin 120s linear infinite;
+  }
+
+  @keyframes ribbon-flow {
+    from { stroke-dashoffset: 0; }
+    to { stroke-dashoffset: -1400; }
+  }
+  @keyframes ribbon-drift {
+    0%, 100% { transform: translate3d(0, 0, 0); }
+    50% { transform: translate3d(-14px, 10px, 0); }
+  }
+  .ambient .ribbons path {
+    stroke-dasharray: 520 380;
+    animation: ribbon-flow 26s linear infinite;
+  }
+  .ambient .ribbons path:nth-child(2) { animation-duration: 38s; animation-direction: reverse; }
+  .ambient .ribbons path:nth-child(3) { animation-duration: 31s; }
+  .ambient .ribbons { animation: ribbon-drift 18s ease-in-out infinite; }
+
+  @keyframes mote-rise {
+    0% { transform: translate3d(0, 0, 0) scale(0.6); opacity: 0; }
+    12% { opacity: 0.95; }
+    85% { opacity: 0.6; }
+    100% { transform: translate3d(var(--dx, 24px), -105vh, 0) scale(1.15); opacity: 0; }
+  }
+  .ambient .mote {
+    animation: mote-rise 16s linear infinite;
+  }
+  .ambient .mote:nth-child(1)  { animation-duration: 17s; animation-delay: -2s;  --dx: 30px; }
+  .ambient .mote:nth-child(2)  { animation-duration: 13s; animation-delay: -9s;  --dx: -20px; }
+  .ambient .mote:nth-child(3)  { animation-duration: 21s; animation-delay: -5s;  --dx: 18px; }
+  .ambient .mote:nth-child(4)  { animation-duration: 15s; animation-delay: -12s; --dx: -34px; }
+  .ambient .mote:nth-child(5)  { animation-duration: 12s; animation-delay: -1s;  --dx: 14px; }
+  .ambient .mote:nth-child(6)  { animation-duration: 19s; animation-delay: -7s;  --dx: -16px; }
+  .ambient .mote:nth-child(7)  { animation-duration: 16s; animation-delay: -14s; --dx: 36px; }
+  .ambient .mote:nth-child(8)  { animation-duration: 14s; animation-delay: -4s;  --dx: -26px; }
+  .ambient .mote:nth-child(9)  { animation-duration: 23s; animation-delay: -10s; --dx: 20px; }
+  .ambient .mote:nth-child(10) { animation-duration: 18s; animation-delay: -16s; --dx: -22px; }
+  .ambient .mote:nth-child(11) { animation-duration: 11s; animation-delay: -6s;  --dx: 12px; }
+  .ambient .mote:nth-child(12) { animation-duration: 20s; animation-delay: -3s;  --dx: -30px; }
+
+  /* -- Vues et éléments -- */
+
+  @keyframes view-enter {
+    from { opacity: 0; transform: translateY(16px); filter: blur(6px); }
+    to { opacity: 1; transform: translateY(0); filter: blur(0); }
+  }
+  .view {
+    animation: view-enter 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  @keyframes modal-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes modal-pop-in {
+    from { opacity: 0; transform: scale(0.9) translateY(10px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+  .modal-overlay {
+    animation: modal-fade-in 0.2s ease;
+  }
+  .modal-card {
+    animation: modal-pop-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  /* Toute l'app se re-rend entièrement à chaque changement (même esprit que
+     le moteur de planification) : chaque élément de liste est donc un NOUVEAU
+     nœud à chaque clic, pas juste un style qui change — une `transition`
+     seule ne jouerait jamais. On utilise une vraie `animation` d'entrée, avec
+     un petit décalage en cascade (--stagger, posé en JS sur chaque item) pour
+     un effet de liste qui se déploie plutôt qu'un bloc figé. */
+  @keyframes item-enter {
+    from { opacity: 0; transform: translateX(-14px) scale(0.98); filter: blur(4px); }
+    to { opacity: 1; transform: translateX(0) scale(1); filter: blur(0); }
+  }
+  .timeline-item,
+  .list-item,
+  .week-block {
+    animation: item-enter 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+    /* Plafonné pour qu'une longue liste ne traîne pas en longueur : au-delà
+       de 12 éléments, le reste apparaît toujours avec le même petit délai. */
+    animation-delay: calc(min(var(--stagger, 0), 12) * 45ms);
+  }
+
+  /* Énergie qui circule dans la veine d'une séance. */
+  @keyframes vein-flow {
+    from { background-position: 0 0; }
+    to { background-position: 0 -220%; }
+  }
+  .timeline-item.session::before {
+    animation: vein-flow 3.2s linear infinite;
+  }
+  .timeline-item.session.status-terminee::before {
+    animation: none;
+    opacity: 0.4;
+  }
+
+  @keyframes check-pop {
+    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(139, 233, 212, 0.7); }
+    40% { transform: scale(1.03); }
+    100% { transform: scale(1); box-shadow: 0 0 0 26px rgba(139, 233, 212, 0); }
+  }
+  .timeline-item.session.status-terminee {
+    animation: item-enter 0.42s cubic-bezier(0.22, 1, 0.36, 1) both, check-pop 0.7s ease-out;
+    /* Le raccourci `animation` ci-dessus réinitialiserait le délai en cascade
+       hérité de la règle .timeline-item générale — on le reprécise ici pour
+       les deux animations (entrée en cascade, puis le petit "pop" après). */
+    animation-delay: calc(min(var(--stagger, 0), 12) * 45ms), 0.15s;
+  }
+
+  button {
+    transition: transform 0.12s ease, box-shadow 0.25s ease;
+  }
+  button:active {
+    transform: scale(0.95);
+  }
+
+  /* Bouton principal : un éclat de lumière le traverse régulièrement. */
+  @keyframes sheen {
+    0%, 55% { transform: translateX(-130%) skewX(-18deg); }
+    100% { transform: translateX(260%) skewX(-18deg); }
+  }
+  .btn-primary::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 40%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+    animation: sheen 4.5s ease-in-out infinite;
+    pointer-events: none;
+  }
+
+  @keyframes streak-pop {
+    0% { transform: scale(0.7) rotate(-8deg); opacity: 0; }
+    60% { transform: scale(1.12) rotate(4deg); opacity: 1; }
+    100% { transform: scale(1) rotate(0); opacity: 1; }
+  }
+  @keyframes rose-pulse {
+    0%, 100% { box-shadow: 0 0 14px rgba(255, 143, 176, 0.25); }
+    50% { box-shadow: 0 0 30px rgba(255, 143, 176, 0.6); }
+  }
+  .streak-badge {
+    animation: streak-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), rose-pulse 3.4s ease-in-out 0.5s infinite;
+  }
+
+  /* L'onglet actif respire. */
+  @keyframes nav-glow {
+    0%, 100% { opacity: 0.55; }
+    50% { opacity: 1; }
+  }
+  .nav-btn.active::after {
+    animation: nav-glow 2.6s ease-in-out infinite;
+  }
+
+  /* Jour courant dans la semaine : pulsation rose. */
+  @keyframes today-pulse {
+    0%, 100% { text-shadow: 0 0 6px rgba(255, 143, 176, 0.5); }
+    50% { text-shadow: 0 0 16px rgba(255, 143, 176, 1); }
+  }
+  .week-day-header.is-today {
+    animation: today-pulse 3s ease-in-out infinite;
+  }
 }

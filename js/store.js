@@ -7,7 +7,7 @@
 // direct à getState() depuis une vue) afin que le recalcul du planning
 // (scheduler.js) soit systématiquement relancé après chaque changement.
 
-import { emptyStore, defaultSettings, createTask, createWeeklyConstraint, createOneOffEvent, createRecurringColleTemplate, createVacation, SCHEMA_VERSION } from './models.js';
+import { emptyStore, defaultSettings, createTask, createWeeklyConstraint, createOneOffEvent, createRecurringColleTemplate, createVacation, DEFAULT_SUBJECTS, LEGACY_SUBJECT_COLORS, SCHEMA_VERSION } from './models.js';
 import { recomputeSchedule } from './scheduler.js';
 import { addDaysISO } from './utils/date.js';
 import {
@@ -44,6 +44,13 @@ function loadRaw() {
 
     // Garde-fous si le blob est partiel (ancienne version, édition manuelle...).
     data.settings = { ...defaultSettings(), ...data.settings };
+    // Nouvelle palette : on remplace seulement les couleurs jamais personnalisées.
+    const newColors = new Map(DEFAULT_SUBJECTS.map((s) => [s.id, s.color]));
+    if (Array.isArray(data.settings.subjects)) {
+      data.settings.subjects = data.settings.subjects.map((s) =>
+        LEGACY_SUBJECT_COLORS[s.id] && s.color && s.color.toLowerCase() === LEGACY_SUBJECT_COLORS[s.id].toLowerCase() ? { ...s, color: newColors.get(s.id) } : s
+      );
+    }
     data.tasks = data.tasks || [];
     data.sessions = data.sessions || [];
     data.weeklyConstraints = data.weeklyConstraints || [];

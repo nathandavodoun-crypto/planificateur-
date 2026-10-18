@@ -32,7 +32,7 @@ function escapeHtml(str) {
 }
 
 function subjectMeta(subjectId, settings) {
-  return (settings.subjects || []).find((s) => s.id === subjectId) || { label: subjectId, color: '#6B7280' };
+  return (settings.subjects || []).find((s) => s.id === subjectId) || { label: subjectId, color: '#56627f' };
 }
 
 function collectDayItems(dateISO, state) {
@@ -40,18 +40,18 @@ function collectDayItems(dateISO, state) {
 
   for (const c of state.weeklyConstraints) {
     if (!constraintAppliesOnDate(c, dateISO, state.vacations)) continue;
-    items.push({ kind: 'constraint', ref: c, start: c.startTime, end: c.endTime, label: `${CATEGORY_LABELS[c.category]} — ${c.label}`, color: '#6B7280' });
+    items.push({ kind: 'constraint', ref: c, start: c.startTime, end: c.endTime, label: `${CATEGORY_LABELS[c.category]} — ${c.label}`, color: '#56627f' });
   }
   const travel = travelBlockForDate(dateISO, state.weeklyConstraints, state.settings, state.vacations);
-  if (travel) items.push({ kind: 'travel', start: travel.start, end: travel.end, label: 'Trajet retour', color: '#6B7280' });
+  if (travel) items.push({ kind: 'travel', start: travel.start, end: travel.end, label: 'Trajet retour', color: '#56627f' });
   for (const ev of state.oneOffEvents) {
     if (ev.date !== dateISO) continue;
-    items.push({ kind: 'event', ref: ev, start: ev.startTime, end: ev.endTime, label: `${CATEGORY_LABELS[ev.category]} — ${ev.label}`, color: '#6B7280' });
+    items.push({ kind: 'event', ref: ev, start: ev.startTime, end: ev.endTime, label: `${CATEGORY_LABELS[ev.category]} — ${ev.label}`, color: '#56627f' });
   }
   for (const s of state.sessions) {
     if (s.date !== dateISO) continue;
     const task = state.tasks.find((t) => t.id === s.taskId);
-    const subj = task ? subjectMeta(task.subject, state.settings) : { label: '?', color: '#6B7280' };
+    const subj = task ? subjectMeta(task.subject, state.settings) : { label: '?', color: '#56627f' };
     items.push({ kind: 'session', ref: s, task, start: s.startTime, end: s.endTime, label: task ? task.title : '?', color: subj.color });
   }
   return items;

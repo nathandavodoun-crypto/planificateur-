@@ -30,15 +30,22 @@ export const TASK_TYPE_LABELS = {
 };
 
 export const DEFAULT_SUBJECTS = [
-  { id: 'maths', label: 'Maths', color: '#3B82F6' },
-  { id: 'physique', label: 'Physique', color: '#10B981' },
-  { id: 'chimie', label: 'Chimie', color: '#F59E0B' },
-  { id: 'si', label: 'SI', color: '#8B5CF6' },
-  { id: 'francais', label: 'Français', color: '#EC4899' },
-  { id: 'anglais', label: 'Anglais', color: '#EF4444' },
-  { id: 'info', label: 'Info', color: '#06B6D4' },
-  { id: 'autre', label: 'Autre', color: '#6B7280' },
+  { id: 'maths', label: 'Maths', color: '#5AA9FF' },
+  { id: 'physique', label: 'Physique', color: '#35D6EE' },
+  { id: 'chimie', label: 'Chimie', color: '#FF86AE' },
+  { id: 'si', label: 'SI', color: '#9C8CFF' },
+  { id: 'francais', label: 'Français', color: '#FFA98A' },
+  { id: 'anglais', label: 'Anglais', color: '#7C9CFF' },
+  { id: 'info', label: 'Info', color: '#C9ABFF' },
+  { id: 'autre', label: 'Autre', color: '#8693B0' },
 ];
+
+// Anciennes couleurs par défaut (avant la direction artistique « Éveil ») :
+// migrées automatiquement tant que l'utilisateur ne les a pas personnalisées.
+export const LEGACY_SUBJECT_COLORS = {
+  maths: '#3B82F6', physique: '#10B981', chimie: '#F59E0B', si: '#8B5CF6',
+  francais: '#EC4899', anglais: '#EF4444', info: '#06B6D4', autre: '#6B7280',
+};
 
 export const SCHEMA_VERSION = 2;
 
