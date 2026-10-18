@@ -43,7 +43,7 @@ function computeStatus(task, sessions) {
 // pourquoi un devoir "pour demain" n'est pas planifié le soir même.
 function deadlineLabel(task, state) {
   if (task.deadlineTime) return task.deadlineTime;
-  const effective = effectiveDeadlineTime(task, state.weeklyConstraints, state.oneOffEvents, state.settings);
+  const effective = effectiveDeadlineTime(task, state.weeklyConstraints, state.oneOffEvents, state.settings, state.vacations);
   return effective === state.settings.dayEndCutoff ? '' : `(avant ${effective})`;
 }
 

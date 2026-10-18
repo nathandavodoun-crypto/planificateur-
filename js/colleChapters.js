@@ -105,6 +105,47 @@ export function ensureRecurringColleInstances(state, now) {
   }
 }
 
+/**
+ * Plan de rattrapage de vacances : les révisions de chapitres en retard (ou
+ * dues d'ici la fin des vacances) sont réparties sur les jours libres de la
+ * période — les plus en retard d'abord, jamais sur un jour de repos. Action
+ * explicite (un bouton), pas un recalcul automatique : les dates des
+ * chapitres ne doivent pas bouger sans que l'utilisateur l'ait demandé.
+ * @returns {number} nombre de chapitres replanifiés
+ */
+export function planVacationCatchUp(state, vacation, now) {
+  const todayIso = todayISO(now);
+  const rest = new Set(state.oneOffEvents.filter((e) => e.category === 'repos').map((e) => e.date));
+  const days = [];
+  for (let d = todayIso > vacation.startDate ? todayIso : vacation.startDate; d <= vacation.endDate; d = addDaysISO(d, 1)) {
+    if (!rest.has(d)) days.push(d);
+  }
+  if (days.length === 0) return 0;
+
+  const subjectOrder = new Map((state.settings.subjects || []).map((s, i) => [s.id, i]));
+  const targets = state.chapters
+    .filter((ch) => ch.status === 'active' && !ch.fusedIntoEventId && ch.nextReviewDate && ch.nextReviewDate <= vacation.endDate)
+    .filter((ch) => ch.nextReviewDate <= todayIso || ch.nextReviewDate < days[0] || !days.includes(ch.nextReviewDate))
+    .sort((a, b) => {
+      if (a.nextReviewDate !== b.nextReviewDate) return a.nextReviewDate < b.nextReviewDate ? -1 : 1; // le plus en retard d'abord
+      return (subjectOrder.get(a.subject) ?? 999) - (subjectOrder.get(b.subject) ?? 999);
+    });
+  if (targets.length === 0) return 0;
+
+  const n = targets.length;
+  targets.forEach((ch, i) => {
+    const idx = n === 1 ? 0 : Math.round((i / (n - 1)) * (days.length - 1));
+    ch.nextReviewDate = days[idx];
+    ch.updatedAt = Date.now();
+    // La tâche en attente est reconstruite au prochain recalcul avec la nouvelle date.
+    if (ch.pendingTaskId) {
+      deleteTaskCascade(state, ch.pendingTaskId);
+      ch.pendingTaskId = null;
+    }
+  });
+  return n;
+}
+
 function normalizeText(str) {
   return String(str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }

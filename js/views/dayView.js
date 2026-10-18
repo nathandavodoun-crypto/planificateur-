@@ -6,6 +6,7 @@ import { getState, getWarnings, setSessionStatus } from '../store.js';
 import { todayISO, addDaysISO, formatDateFR, combineDateTime } from '../utils/date.js';
 import { computeStreak } from '../stats.js';
 import { travelBlockForDate } from '../travel.js';
+import { vacationForDate, constraintAppliesOnDate } from '../vacations.js';
 
 const TYPE_BADGES = {
   preparation_colle: '🎤',
@@ -32,6 +33,7 @@ const CATEGORY_LABELS = {
   ds: 'DS',
   colle: 'Colle',
   adhoc: 'Imprévu',
+  repos: 'Repos',
 };
 
 function subjectMeta(subjectId, settings) {
@@ -45,16 +47,13 @@ function escapeHtml(str) {
 }
 
 function dayBlocks(dateISO, state) {
-  const weekday = new Date(dateISO + 'T00:00:00').getDay();
   const blocks = [];
   for (const c of state.weeklyConstraints) {
-    if (c.active && c.daysOfWeek.includes(weekday)) {
-      if (c.effectiveFrom && dateISO < c.effectiveFrom) continue;
-      if (c.effectiveUntil && dateISO > c.effectiveUntil) continue;
+    if (constraintAppliesOnDate(c, dateISO, state.vacations)) {
       blocks.push({ start: c.startTime, end: c.endTime, label: `${CATEGORY_LABELS[c.category]} — ${c.label}` });
     }
   }
-  const travel = travelBlockForDate(dateISO, state.weeklyConstraints, state.settings);
+  const travel = travelBlockForDate(dateISO, state.weeklyConstraints, state.settings, state.vacations);
   if (travel) blocks.push({ start: travel.start, end: travel.end, label: 'Trajet retour' });
   for (const ev of state.oneOffEvents) {
     if (ev.date === dateISO) {
@@ -115,6 +114,14 @@ export function renderDayView(container) {
     streakBadge.className = 'streak-badge';
     streakBadge.textContent = `🔥 ${streak} jour${streak > 1 ? 's' : ''} de suite`;
     wrapper.appendChild(streakBadge);
+  }
+
+  const vacation = vacationForDate(selectedDate, state.vacations);
+  if (vacation) {
+    const badge = document.createElement('div');
+    badge.className = 'streak-badge';
+    badge.textContent = `🏖️ ${vacation.label} — rythme léger (max ${Math.round((vacation.dailyCapMinutes / 60) * 10) / 10} h, dès ${vacation.startTime})`;
+    wrapper.appendChild(badge);
   }
 
   function rerender() {

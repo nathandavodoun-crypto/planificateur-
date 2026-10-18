@@ -7,12 +7,14 @@
 // direct à getState() depuis une vue) afin que le recalcul du planning
 // (scheduler.js) soit systématiquement relancé après chaque changement.
 
-import { emptyStore, defaultSettings, createTask, createWeeklyConstraint, createOneOffEvent, createRecurringColleTemplate, SCHEMA_VERSION } from './models.js';
+import { emptyStore, defaultSettings, createTask, createWeeklyConstraint, createOneOffEvent, createRecurringColleTemplate, createVacation, SCHEMA_VERSION } from './models.js';
 import { recomputeSchedule } from './scheduler.js';
+import { addDaysISO } from './utils/date.js';
 import {
   ensureRecurringColleInstances,
   ensureSpacedRepetitionTasks,
   ensureDsRevisionTasks,
+  planVacationCatchUp,
   setColleChapters as setColleChaptersImpl,
   cascadeCleanupOneOffEvent,
   deleteTaskCascade,
@@ -48,6 +50,7 @@ function loadRaw() {
     data.oneOffEvents = data.oneOffEvents || [];
     data.chapters = data.chapters || [];
     data.recurringColleTemplates = data.recurringColleTemplates || [];
+    data.vacations = data.vacations || [];
     return data;
   } catch (e) {
     console.warn('Données locales illisibles, redémarrage avec un planning vide.', e);
@@ -303,6 +306,42 @@ export function archiveChapter(id) {
   commit();
 }
 
+// ---- Vacances et jours de repos --------------------------------------------
+
+export function addVacation(partial) {
+  const vacation = createVacation(partial);
+  state.vacations.push(vacation);
+  commit();
+  return vacation;
+}
+
+export function deleteVacation(id) {
+  state.vacations = state.vacations.filter((v) => v.id !== id);
+  commit();
+}
+
+/** Répartit les révisions de chapitres en retard sur les jours libres des vacances. @returns {number} chapitres replanifiés */
+export function planCatchUpForVacation(id) {
+  const vacation = state.vacations.find((v) => v.id === id);
+  if (!vacation) return 0;
+  const count = planVacationCatchUp(state, vacation, new Date());
+  commit();
+  return count;
+}
+
+/** Jours de repos protégés : journée entière bloquée, le travail prévu est replacé ailleurs. */
+export function addRestDays(label, fromDate, toDate) {
+  const rows = [];
+  for (let d = fromDate; d <= toDate; d = addDaysISO(d, 1)) {
+    if (state.oneOffEvents.some((e) => e.category === 'repos' && e.date === d)) continue;
+    rows.push({ category: 'repos', label: label || 'Jour de repos', date: d, startTime: '00:00', endTime: '23:59', createdVia: 'planned' });
+  }
+  if (rows.length === 0) return 0;
+  state.oneOffEvents.push(...rows.map((r) => createOneOffEvent(r)));
+  commit();
+  return rows.length;
+}
+
 // ---- Réglages -----------------------------------------------------------
 
 // Bornes de sécurité : une case vidée par erreur dans Réglages donne 0, et une
@@ -353,6 +392,7 @@ export function exportBackup() {
 export function importBackup(json) {
   const data = JSON.parse(json);
   data.schemaVersion = data.schemaVersion || SCHEMA_VERSION;
+  data.vacations = data.vacations || [];
   state = data;
   commit();
 }

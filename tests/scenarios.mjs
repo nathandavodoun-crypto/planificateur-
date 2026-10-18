@@ -14,6 +14,7 @@ import {
   createOneOffEvent,
   createSession,
   createChapter,
+  createVacation,
   createRecurringColleTemplate,
   DEFAULT_SUBJECTS,
 } from '../js/models.js';
@@ -21,12 +22,14 @@ import {
   ensureRecurringColleInstances,
   ensureSpacedRepetitionTasks,
   ensureDsRevisionTasks,
+  planVacationCatchUp,
   setColleChapters,
   handleTaskCompletionSideEffects,
   importChapters,
 } from '../js/colleChapters.js';
 import { timeToMinutes, addDaysISO, formatDateFR, formatDuration, combineDateTime } from '../js/utils/date.js';
-import { computeStreak } from '../js/stats.js';
+import { computeStreak, vacationReport } from '../js/stats.js';
+import { effectiveDeadlineTime } from '../js/scheduler.js';
 import { travelBlockForDate } from '../js/travel.js';
 
 let totalChecks = 0;
@@ -972,6 +975,92 @@ function scenarioP() {
 }
 
 // ---------------------------------------------------------------------------
+// Scénario Q — Vacances, avance des devoirs, jours de repos, plan de rattrapage, bilan
+// ---------------------------------------------------------------------------
+
+function scenarioQ() {
+  const now = new Date(2026, 9, 19, 8, 0); // lundi 19/10/2026, 08:00
+  const settings = defaultSettings();
+  const constraints = [
+    createWeeklyConstraint({ label: 'Maths (502)', category: 'cours', daysOfWeek: [1, 2, 3, 4, 5], startTime: '08:00', endTime: '12:00' }),
+    createWeeklyConstraint({ label: 'Physique (502)', category: 'cours', daysOfWeek: [1, 2, 3, 4, 5], startTime: '13:30', endTime: '15:30' }),
+    createWeeklyConstraint({ label: 'Midi (pas de travail)', category: 'repas', daysOfWeek: [1, 2, 3, 4, 5], startTime: '12:00', endTime: '13:30' }),
+  ];
+  const vac = createVacation({ label: 'Toussaint', startDate: '2026-10-19', endDate: '2026-10-25', dailyCapMinutes: 120, startTime: '10:00', workAhead: true, aheadDays: 7 });
+  const run = (tasks, extra = {}) => recomputeSchedule(now, { tasks, sessions: [], weeklyConstraints: constraints, oneOffEvents: extra.events || [], vacations: extra.vacations ?? [vac], settings });
+  const dm = (title, deadlineDate, minutes, time = '20:00') => createTask({ subject: 'maths', type: 'dm', title, deadlineDate, deadlineTime: time, estimatedDurationMinutes: minutes, priority: 2 });
+  const perDay = (r) => { const m = new Map(); for (const x of r.sessions) m.set(x.date, (m.get(x.date) || 0) + x.durationMinutes); return m; };
+
+  console.log('\n=== Scénario Q : vacances et repos ===');
+
+  // 1. Cours suspendus, rythme léger.
+  const t1 = dm('DM vacances', '2026-10-24', 480);
+  const r1 = run([t1]);
+  const lundi = r1.sessions.filter((x) => x.date === '2026-10-19').map((x) => `${x.startTime}-${x.endTime}`).join(', ');
+  console.log(`  Lundi 19 (vacances) : ${lundi || '(rien)'}`);
+  check('Pendant les vacances, plus de cours : le travail peut tomber sur les heures de cours du lundi, dès 10:00', r1.sessions.some((x) => x.date === '2026-10-19' && timeToMinutes(x.startTime) >= timeToMinutes('10:00') && timeToMinutes(x.startTime) < timeToMinutes('12:00')));
+  check('… jamais avant l\'heure de début des vacances (10:00)', r1.sessions.every((x) => timeToMinutes(x.startTime) >= timeToMinutes('10:00')));
+  check('… avec le rythme léger : jamais plus de 120 min par jour', [...perDay(r1).values()].every((m) => m <= 125));
+  check('… et pas de trajet retour pendant les vacances (mais toujours le midi)', travelBlockForDate('2026-10-19', constraints, settings, [vac]) === null && travelBlockForDate('2026-10-26', constraints, settings, [vac]) !== null);
+  check('… la pause du midi reste respectée', r1.sessions.every((x) => timeToMinutes(x.endTime) <= timeToMinutes('12:00') || timeToMinutes(x.startTime) >= timeToMinutes('13:30')));
+
+  // 2. Échéance : sans cours pendant les vacances, "pour demain" ne veut plus dire "avant le cours".
+  const hw = createTask({ subject: 'maths', type: 'exercices', title: 'Exo', deadlineDate: '2026-10-21', estimatedDurationMinutes: 60 });
+  const hwOut = createTask({ subject: 'maths', type: 'exercices', title: 'Exo', deadlineDate: '2026-10-27', estimatedDurationMinutes: 60 });
+  check('Un devoir dû un jour de vacances sans heure : échéance en fin de journée (pas de cours)', effectiveDeadlineTime(hw, constraints, [], settings, [vac]) === settings.dayEndCutoff);
+  check('… alors qu\'après la reprise, il reste dû au début du cours (08:00)', effectiveDeadlineTime(hwOut, constraints, [], settings, [vac]) === '08:00');
+
+  // 3. Avance : un DM dû 5 jours après la reprise est fini avant la fin des vacances.
+  const ahead = dm('DM de la reprise', '2026-10-30', 240);
+  const far = dm('DM lointain', '2026-11-20', 240);
+  const rAhead = run([ahead, far]);
+  const rNoAhead = run([ahead], { vacations: [{ ...vac, workAhead: false }] });
+  const lastDay = (r, t) => r.sessions.filter((x) => x.taskId === t.id).map((x) => x.date).sort().pop();
+  console.log(`  DM dû le 30/10 : dernière séance le ${lastDay(rAhead, ahead)} (sans avance : ${lastDay(rNoAhead, ahead)})`);
+  check('Avec l\'avance, le DM dû juste après la reprise est entièrement fait avant la fin des vacances (25/10)', lastDay(rAhead, ahead) <= '2026-10-25' && rAhead.sessions.filter((x) => x.taskId === ahead.id).length > 0);
+  check('… sans l\'avance, il serait resté étalé jusqu\'à la reprise', lastDay(rNoAhead, ahead) > '2026-10-25');
+  check('… un DM beaucoup plus lointain (20/11) n\'est pas concerné', lastDay(rAhead, far) > '2026-10-25');
+  check('… rien n\'est signalé impossible', rAhead.warnings.length === 0);
+
+  // 4. Jour de repos : rien dessus, le travail va ailleurs.
+  const rest = createOneOffEvent({ label: 'Repos', category: 'repos', date: '2026-10-21', startTime: '00:00', endTime: '23:59' });
+  const t4 = dm('DM avec repos', '2026-10-24', 240);
+  const r4 = run([t4], { events: [rest] });
+  check('Jour de repos (mer 21/10) : aucune session ce jour-là', r4.sessions.every((x) => x.date !== '2026-10-21'));
+  check('… le DM est quand même entièrement planifié, sans avertissement', r4.sessions.reduce((a, x) => a + x.durationMinutes, 0) === 240 && r4.warnings.length === 0);
+  const ds = createOneOffEvent({ category: 'ds', label: 'DS Physique', subject: 'physique', date: '2026-10-24', startTime: '08:00', endTime: '12:00' });
+  const dsData = { tasks: [], sessions: [], weeklyConstraints: constraints, oneOffEvents: [ds, rest], chapters: [], recurringColleTemplates: [], vacations: [vac], settings };
+  ensureDsRevisionTasks(dsData, now);
+  const rDs = recomputeSchedule(now, dsData);
+  check('Révision quotidienne de DS : pas de séance forcée un jour de repos, et aucun avertissement parasite', rDs.sessions.every((x) => x.date !== '2026-10-21') && rDs.warnings.length === 0 && rDs.sessions.length >= 3);
+
+  // 5. Plan de rattrapage des chapitres.
+  const chapters = [
+    createChapter({ subject: 'maths', title: 'Suites', dateSeen: '2026-09-10', status: 'active', stage: 0, nextReviewDate: '2026-09-11' }),
+    createChapter({ subject: 'physique', title: 'Optique', dateSeen: '2026-09-20', status: 'active', stage: 0, nextReviewDate: '2026-09-27' }),
+    createChapter({ subject: 'chimie', title: 'Cinétique', dateSeen: '2026-10-05', status: 'active', stage: 0, nextReviewDate: '2026-10-12' }),
+  ];
+  const cData = { tasks: [], sessions: [], weeklyConstraints: constraints, oneOffEvents: [rest], chapters, recurringColleTemplates: [], vacations: [vac], settings };
+  ensureSpacedRepetitionTasks(cData, now);
+  const n = planVacationCatchUp(cData, vac, now);
+  ensureSpacedRepetitionTasks(cData, now);
+  const dates = chapters.map((c) => c.nextReviewDate);
+  console.log('  Rattrapage réparti :', chapters.map((c) => `${c.title} → ${c.nextReviewDate}`).join(', '));
+  check('Plan de rattrapage : les 3 chapitres en retard sont replanifiés', n === 3);
+  check('… tous dans les vacances (19→25/10) et jamais un jour de repos', dates.every((d) => d >= '2026-10-19' && d <= '2026-10-25' && d !== '2026-10-21'));
+  check('… étalés sur des jours différents, le plus en retard (Suites) en premier', new Set(dates).size === 3 && dates[0] <= dates[1] && dates[1] <= dates[2]);
+  check('… et les tâches de révision suivent les nouvelles dates (pas de doublon)', cData.tasks.filter((t) => t.type === 'revision_espacee').length === 3 && chapters.every((c) => cData.tasks.find((t) => t.id === c.pendingTaskId)?.deadlineDate === c.nextReviewDate));
+
+  // 6. Bilan.
+  const doneSession = createSession({ taskId: t1.id, sessionIndex: 0, date: '2026-10-19', startTime: '10:00', endTime: '11:30', durationMinutes: 90, status: 'terminee' });
+  chapters[0].history.push({ date: '2026-10-19', stage: 0, difficulty: 'facile', fusedWithColle: false });
+  const report = vacationReport({ tasks: [t1, ahead], sessions: [doneSession], chapters, oneOffEvents: [rest] }, vac, new Date(2026, 9, 20, 9, 0));
+  check('Bilan : temps travaillé, séances et jours travaillés', report.minutesDone === 90 && report.sessionsDone === 1 && report.workedDays === 1);
+  check('Bilan : révisions de chapitres faites pendant la période, jours de repos, devoirs de la reprise', report.chapterReviews === 1 && report.restDays === 1 && report.ahead.total === 1 && report.ahead.finished === 0 && report.ahead.remainingMinutes === 240);
+  check('Bilan : statut en cours / terminée selon la date', report.status === 'en_cours' && vacationReport({ tasks: [], sessions: [], chapters: [], oneOffEvents: [] }, vac, new Date(2026, 9, 27)).status === 'terminee');
+}
+
+// ---------------------------------------------------------------------------
 
 scenarioA();
 scenarioB();
@@ -989,6 +1078,7 @@ scenarioM();
 scenarioN();
 scenarioO();
 scenarioP();
+scenarioQ();
 
 console.log(`\n${totalChecks - failedChecks}/${totalChecks} vérifications passées.`);
 if (failedChecks > 0) {

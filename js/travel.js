@@ -4,22 +4,15 @@
 // temps et du réglage `travelAfterClassMinutes`. Source unique, utilisée par
 // le moteur (pour ne rien planifier dedans) ET par les vues (pour l'afficher).
 
-import { weekdayOfISO, timeToMinutes, minutesToTime } from './utils/date.js';
+import { timeToMinutes, minutesToTime } from './utils/date.js';
+import { constraintAppliesOnDate } from './vacations.js';
 
 /** @returns {{start: string, end: string} | null} le créneau de trajet de ce jour, ou null s'il n'y a pas de cours. */
-export function travelBlockForDate(dateISO, weeklyConstraints, settings) {
+export function travelBlockForDate(dateISO, weeklyConstraints, settings, vacations = []) {
   const travel = settings.travelAfterClassMinutes || 0;
   if (travel <= 0) return null;
 
-  const weekday = weekdayOfISO(dateISO);
-  const courses = weeklyConstraints.filter(
-    (c) =>
-      c.active &&
-      c.category === 'cours' &&
-      c.daysOfWeek.includes(weekday) &&
-      (!c.effectiveFrom || dateISO >= c.effectiveFrom) &&
-      (!c.effectiveUntil || dateISO <= c.effectiveUntil)
-  );
+  const courses = weeklyConstraints.filter((c) => c.category === 'cours' && constraintAppliesOnDate(c, dateISO, vacations));
   if (courses.length === 0) return null;
 
   const lastEnd = courses.map((c) => c.endTime).sort().pop();

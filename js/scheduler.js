@@ -30,6 +30,7 @@ import {
 } from './utils/date.js';
 import { createSession } from './models.js';
 import { travelBlockForDate } from './travel.js';
+import { vacationForDate, constraintAppliesOnDate, restDates } from './vacations.js';
 
 // ---------------------------------------------------------------------------
 // Arithmétique d'intervalles (minutes depuis minuit, entiers, demi-ouverts [a,b))
@@ -79,11 +80,14 @@ function firstFit(freeIntervals, duration, maxEnd = Infinity) {
 // ---------------------------------------------------------------------------
 
 function splitIntoN(remainingMinutes, n) {
-  const base = Math.floor(remainingMinutes / n);
-  const remainder = remainingMinutes - base * n;
+  // Réparti par tranches de 5 minutes pour que la somme des séances reste égale
+  // au travail demandé (arrondir chaque séance séparément la faisait dériver).
+  const units = Math.max(0, Math.round(remainingMinutes / 5));
+  const base = Math.floor(units / n);
+  const remainder = units - base * n;
   const durations = Array(n).fill(base);
-  for (let i = 0; i < remainder; i++) durations[i % n] += 1;
-  return durations.map(round5).filter((d) => d > 0);
+  for (let i = 0; i < remainder; i++) durations[i] += 1;
+  return durations.map((d) => d * 5).filter((d) => d > 0);
 }
 
 /**
@@ -144,7 +148,7 @@ function computeTargetWindow(todayIso, deadlineDateISO, safetyMarginDays) {
  * avec une petite marge de souplesse — dans les deux cas, la seule vraie
  * limite dure reste l'échéance elle-même (deadlineDate/deadlineTime).
  */
-function computeWindowForTask(task, todayIso, settings) {
+function computeWindowForTask(task, todayIso, settings, vacations = []) {
   if (task.type === 'preparation_colle' && task.linkedEventId) {
     const { revisionLeadDaysMin, revisionLeadDaysMax } = settings.colle;
     const earliestDay = maxISO([todayIso, addDaysISO(task.deadlineDate, -revisionLeadDaysMax)]);
@@ -156,7 +160,15 @@ function computeWindowForTask(task, todayIso, settings) {
     const targetLastDay = maxISO([earliestDay, task.deadlineDate]);
     return { earliestDay, targetLastDay };
   }
-  return computeTargetWindow(todayIso, task.deadlineDate, settings.safetyMarginDays);
+  const window = computeTargetWindow(todayIso, task.deadlineDate, settings.safetyMarginDays);
+  // Vacances "avance": un devoir dû peu après la reprise est fini avant la fin des vacances.
+  if (SPREADABLE_TYPES.has(task.type)) {
+    const v = vacations.find(
+      (x) => x.workAhead && x.endDate >= todayIso && task.deadlineDate > x.endDate && task.deadlineDate <= addDaysISO(x.endDate, x.aheadDays ?? 7)
+    );
+    if (v && v.endDate < window.targetLastDay) window.targetLastDay = maxISO([window.earliestDay, v.endDate]);
+  }
+  return window;
 }
 
 /**
@@ -183,20 +195,16 @@ export function distributeNotBeforeDates(n, earliestDay, targetLastDay, minGapDa
 // Créneaux bloqués d'une journée donnée
 // ---------------------------------------------------------------------------
 
-function collectBlocksForDate(dateISO, weeklyConstraints, oneOffEvents, blockingSessions, settings) {
-  const weekday = weekdayOfISO(dateISO);
+function collectBlocksForDate(dateISO, weeklyConstraints, oneOffEvents, blockingSessions, settings, vacations = []) {
   const blocks = [];
 
   for (const c of weeklyConstraints) {
-    if (!c.active) continue;
-    if (!c.daysOfWeek.includes(weekday)) continue;
-    if (c.effectiveFrom && dateISO < c.effectiveFrom) continue;
-    if (c.effectiveUntil && dateISO > c.effectiveUntil) continue;
+    if (!constraintAppliesOnDate(c, dateISO, vacations)) continue;
     blocks.push([timeToMinutes(c.startTime), timeToMinutes(c.endTime)]);
   }
   // Trajet retour après le dernier cours de la journée (rien n'est planifié
   // pendant qu'on rentre).
-  const travel = travelBlockForDate(dateISO, weeklyConstraints, settings);
+  const travel = travelBlockForDate(dateISO, weeklyConstraints, settings, vacations);
   if (travel) blocks.push([timeToMinutes(travel.start), timeToMinutes(travel.end)]);
   for (const ev of oneOffEvents) {
     if (ev.date === dateISO) blocks.push([timeToMinutes(ev.startTime), timeToMinutes(ev.endTime)]);
@@ -247,7 +255,7 @@ function normalizeText(str) {
  *   (même matière, ou DS à matières multiples), avant de se rabattre sur les
  *   cours.
  */
-export function effectiveDeadlineTime(task, weeklyConstraints, oneOffEvents, settings) {
+export function effectiveDeadlineTime(task, weeklyConstraints, oneOffEvents, settings, vacations = []) {
   if (task.deadlineTime) return task.deadlineTime;
 
   // Une préparation de colle liée à une colle a déjà une heure précise ; une saisie manuelle non.
@@ -262,15 +270,7 @@ export function effectiveDeadlineTime(task, weeklyConstraints, oneOffEvents, set
     if (events.length > 0) return events.map((e) => e.startTime).sort()[0];
   }
 
-  const weekday = weekdayOfISO(task.deadlineDate);
-  const courses = weeklyConstraints.filter(
-    (c) =>
-      c.active &&
-      c.category === 'cours' &&
-      c.daysOfWeek.includes(weekday) &&
-      (!c.effectiveFrom || task.deadlineDate >= c.effectiveFrom) &&
-      (!c.effectiveUntil || task.deadlineDate <= c.effectiveUntil)
-  );
+  const courses = weeklyConstraints.filter((c) => c.category === 'cours' && constraintAppliesOnDate(c, task.deadlineDate, vacations));
   if (courses.length === 0) return settings.dayEndCutoff;
 
   const subjectLabel = normalizeText((settings.subjects || []).find((s) => s.id === task.subject)?.label || task.subject);
@@ -290,6 +290,8 @@ export function effectiveDeadlineTime(task, weeklyConstraints, oneOffEvents, set
  */
 export function recomputeSchedule(now, data) {
   const { tasks, sessions, weeklyConstraints, oneOffEvents, settings } = data;
+  const vacations = data.vacations || [];
+  const restDays = restDates(oneOffEvents);
   const tasksById = new Map(tasks.map((t) => [t.id, t]));
   const todayIso = todayISO(now);
 
@@ -334,7 +336,7 @@ export function recomputeSchedule(now, data) {
     if (remaining <= 0) continue;
 
     const alreadyCount = generatedCountByTask.get(task.id) || 0;
-    const deadlineTime = effectiveDeadlineTime(task, weeklyConstraints, oneOffEvents, settings);
+    const deadlineTime = effectiveDeadlineTime(task, weeklyConstraints, oneOffEvents, settings, vacations);
     const deadlineInstant = combineDateTime(task.deadlineDate, deadlineTime);
 
     // Réviser pour une colle ou un DS qui a déjà eu lieu n'a plus de sens :
@@ -354,7 +356,7 @@ export function recomputeSchedule(now, data) {
       const doneDates = new Set(immutable.filter((x) => x.taskId === task.id).map((x) => x.date));
       let index = alreadyCount;
       for (let d = firstDay; d <= lastDay; d = addDaysISO(d, 1)) {
-        if (doneDates.has(d)) continue;
+        if (doneDates.has(d) || restDays.has(d)) continue; // jour de repos : on ne force rien
         // Plus assez de journée devant soi aujourd'hui : on n'en fait pas un échec.
         if (d === todayIso && Math.ceil(nowMinutes(now) / 5) * 5 + duration > dayEndMinutes) continue;
         units.push({
@@ -393,7 +395,7 @@ export function recomputeSchedule(now, data) {
     }
     if (durations.length === 0) continue;
 
-    const { earliestDay, targetLastDay } = computeWindowForTask(task, todayIso, settings);
+    const { earliestDay, targetLastDay } = computeWindowForTask(task, todayIso, settings, vacations);
     const minGapDays = task.type === 'revision_ds' ? settings.minGapDaysDsRevision : settings.minGapDaysSameTaskDefault;
 
     // Répartition progressive : à plus de 2 jours de l'échéance, la taille visée
@@ -464,16 +466,18 @@ export function recomputeSchedule(now, data) {
     const isToday = cursor === todayIso;
     // Aujourd'hui : on démarre à la prochaine tranche de 5 minutes (13:13 → 13:15),
     // pour des horaires lisibles plutôt que des sessions à 13:13.
-    const dayStartMinutes = isToday
-      ? Math.max(Math.ceil(nowMinutes(now) / 5) * 5, timeToMinutes(settings.dayStartTime))
-      : timeToMinutes(settings.dayStartTime);
+    const vacation = vacationForDate(cursor, vacations);
+    const dayStartBase = vacation && vacation.startTime ? Math.max(timeToMinutes(settings.dayStartTime), timeToMinutes(vacation.startTime)) : timeToMinutes(settings.dayStartTime);
+    const dayStartMinutes = isToday ? Math.max(Math.ceil(nowMinutes(now) / 5) * 5, dayStartBase) : dayStartBase;
     const dayEndMinutes = timeToMinutes(settings.dayEndCutoff);
 
     if (dayStartMinutes < dayEndMinutes) {
-      const blocks = collectBlocksForDate(cursor, weeklyConstraints, oneOffEvents, [...immutable, ...placed], settings);
+      const blocks = collectBlocksForDate(cursor, weeklyConstraints, oneOffEvents, [...immutable, ...placed], settings, vacations);
       let free = subtractIntervals([[dayStartMinutes, dayEndMinutes]], blocks);
 
-      const dailyCap = isWeekendISO(cursor) ? settings.dailyCapWeekendMinutes : settings.dailyCapWeekdayMinutes;
+      const dailyCap = vacation && typeof vacation.dailyCapMinutes === 'number'
+        ? vacation.dailyCapMinutes
+        : isWeekendISO(cursor) ? settings.dailyCapWeekendMinutes : settings.dailyCapWeekdayMinutes;
       const usedToday = sumMinutesOnDate(cursor, immutable) + sumMinutesOnDate(cursor, placed);
       let capRemaining = dailyCap - usedToday;
 

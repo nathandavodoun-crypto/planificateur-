@@ -58,3 +58,52 @@ export function minutesWorkedBetween(state, startISO, endISO) {
     .filter((s) => s.status === 'terminee' && s.date >= startISO && s.date <= endISO)
     .reduce((sum, s) => sum + s.durationMinutes, 0);
 }
+
+/**
+ * Bilan d'une période de vacances (en cours ou terminée) : temps travaillé,
+ * chapitres révisés, rattrapage restant et devoirs avancés pour la reprise.
+ */
+export function vacationReport(state, vacation, now) {
+  const today = todayISO(now);
+  const { startDate: start, endDate: end } = vacation;
+  const status = today < start ? 'a_venir' : today > end ? 'terminee' : 'en_cours';
+  const inRange = (d) => d >= start && d <= end;
+
+  const sessions = state.sessions.filter((s) => inRange(s.date));
+  const done = sessions.filter((s) => s.status === 'terminee');
+  const minutesDone = done.reduce((sum, s) => sum + s.durationMinutes, 0);
+  const minutesPlanned = sessions.filter((s) => s.status === 'planifiee' && s.date >= today).reduce((sum, s) => sum + s.durationMinutes, 0);
+  const workedDays = new Set(done.map((s) => s.date)).size;
+
+  let chapterReviews = 0;
+  for (const ch of state.chapters || []) chapterReviews += (ch.history || []).filter((h) => inRange(h.date)).length;
+  const chaptersStillLate = (state.chapters || []).filter((ch) => ch.status === 'active' && ch.nextReviewDate && ch.nextReviewDate <= today).length;
+
+  const restDays = (state.oneOffEvents || []).filter((e) => e.category === 'repos' && inRange(e.date)).length;
+
+  // Devoirs dus juste après la reprise : combien sont déjà finis ?
+  const aheadLimit = addDaysISO(end, vacation.aheadDays ?? 7);
+  const aheadTasks = (state.tasks || []).filter(
+    (t) => ['dm', 'exercices', 'lecture', 'autre'].includes(t.type) && !t.linkedEventId && t.deadlineDate > end && t.deadlineDate <= aheadLimit
+  );
+  const doneMinutesOf = (t) => state.sessions.filter((s) => s.taskId === t.id && s.status === 'terminee').reduce((sum, s) => sum + s.durationMinutes, 0);
+  const aheadFinished = aheadTasks.filter((t) => t.status === 'termine' || doneMinutesOf(t) >= t.estimatedDurationMinutes).length;
+  const aheadRemainingMinutes = aheadTasks.reduce((sum, t) => sum + (t.status === 'termine' ? 0 : Math.max(0, t.estimatedDurationMinutes - doneMinutesOf(t))), 0);
+
+  return {
+    status,
+    totalDays: diffDays(start, end) + 1,
+    workedDays,
+    sessionsDone: done.length,
+    minutesDone,
+    minutesPlanned,
+    chapterReviews,
+    chaptersStillLate,
+    restDays,
+    ahead: { total: aheadTasks.length, finished: aheadFinished, remainingMinutes: aheadRemainingMinutes },
+  };
+}
+
+function diffDays(a, b) {
+  return Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000);
+}

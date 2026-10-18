@@ -3,7 +3,7 @@
 // d'accueil"). Ne touche jamais aux données (elles vivent dans localStorage,
 // pas ici).
 
-const CACHE_VERSION = 'v17';
+const CACHE_VERSION = 'v18';
 const CACHE_NAME = `planificateur-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [
@@ -20,12 +20,14 @@ const PRECACHE_URLS = [
   './js/stats.js',
   './js/ankiConnect.js',
   './js/travel.js',
+  './js/vacations.js',
   './js/utils/date.js',
   './js/views/dayView.js',
   './js/views/weekView.js',
   './js/views/taskFormView.js',
   './js/views/taskListView.js',
   './js/views/settingsView.js',
+  './js/views/vacationsSection.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-512-maskable.png',

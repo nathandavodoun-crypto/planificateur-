@@ -85,7 +85,7 @@ function checkDeadlinesApproaching(state, now) {
     if (doneMinutes >= task.estimatedDurationMinutes) continue;
 
     // Même échéance que le planificateur (début du cours concerné si aucune heure n'est saisie).
-    const deadlineTime = effectiveDeadlineTime(task, state.weeklyConstraints, state.oneOffEvents, state.settings);
+    const deadlineTime = effectiveDeadlineTime(task, state.weeklyConstraints, state.oneOffEvents, state.settings, state.vacations);
     const deadlineInstant = combineDateTime(task.deadlineDate, deadlineTime);
     const hoursUntil = minutesBetween(now, deadlineInstant) / 60;
     const key = `${task.id}:${todayIso}`;

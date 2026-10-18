@@ -201,7 +201,7 @@ export function createOneOffEvent(partial) {
   return {
     id: makeId(),
     label: '',
-    category: 'adhoc', // 'colle' | 'ds' | 'autre' | 'adhoc'
+    category: 'adhoc', // 'colle' | 'ds' | 'autre' | 'adhoc' | 'repos' (jour de repos : journée entière bloquée)
     date: null,
     startTime: '08:00',
     endTime: '09:00',
@@ -210,6 +210,26 @@ export function createOneOffEvent(partial) {
     chapterIds: [], // pour category 'colle' : chapitres couverts
     templateId: null, // pour une colle récurrente : la RecurringColleTemplate d'origine
     createdVia: 'planned', // 'planned' | 'adhoc' | 'recurring_colle_template'
+    ...partial,
+  };
+}
+
+/**
+ * Période de vacances : pendant ces dates les cours (et le trajet retour) ne
+ * bloquent plus rien, la journée de travail est plus légère (plafond et heure
+ * de début propres) et, si `workAhead`, les devoirs dus dans les `aheadDays`
+ * jours qui suivent la reprise sont avancés pour être finis avant la fin.
+ */
+export function createVacation(partial) {
+  return {
+    id: makeId(),
+    label: 'Vacances',
+    startDate: null,
+    endDate: null,
+    dailyCapMinutes: 150, // rythme léger
+    startTime: '09:00', // matin libre
+    workAhead: true,
+    aheadDays: 7,
     ...partial,
   };
 }
@@ -266,5 +286,6 @@ export function emptyStore() {
     oneOffEvents: [],
     chapters: [],
     recurringColleTemplates: [],
+    vacations: [],
   };
 }

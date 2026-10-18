@@ -4,9 +4,10 @@
 // situation. Exécuter : `node tests/fuzz.mjs` ou ouvrir tests/fuzz.html.
 
 import { recomputeSchedule, effectiveDeadlineTime } from '../js/scheduler.js';
-import { defaultSettings, createTask, createWeeklyConstraint, createOneOffEvent, createChapter, DEFAULT_SUBJECTS } from '../js/models.js';
+import { defaultSettings, createTask, createWeeklyConstraint, createOneOffEvent, createChapter, createVacation, DEFAULT_SUBJECTS } from '../js/models.js';
 import { ensureRecurringColleInstances, ensureSpacedRepetitionTasks, ensureDsRevisionTasks, setColleChapters, importChapters } from '../js/colleChapters.js';
 import { travelBlockForDate } from '../js/travel.js';
+import { vacationForDate, constraintAppliesOnDate } from '../js/vacations.js';
 import { timeToMinutes, minutesToTime, addDaysISO, todayISO, weekdayOfISO, isWeekendISO, combineDateTime, nowMinutes } from '../js/utils/date.js';
 
 const ITERATIONS = 3000;
@@ -82,7 +83,26 @@ function genScenario(seed) {
     );
   }
 
-  const state = { tasks: [], sessions: [], weeklyConstraints, oneOffEvents, chapters: [], recurringColleTemplates: [], settings };
+  // Vacances (parfois) et jours de repos (parfois) : cours suspendus, rythme léger, journées bloquées.
+  const vacations = [];
+  if (r.chance(0.35)) {
+    const from = r.int(-2, 6);
+    vacations.push(
+      createVacation({
+        startDate: addDaysISO(todayIso, from),
+        endDate: addDaysISO(todayIso, from + r.int(0, 10)),
+        dailyCapMinutes: r.pick([0, 60, 150, 240]),
+        startTime: r.pick(['07:00', '09:00', '11:00']),
+        workAhead: r.chance(0.7),
+        aheadDays: r.pick([3, 7]),
+      })
+    );
+  }
+  for (let i = 0, n = r.chance(0.3) ? r.int(1, 3) : 0; i < n; i++) {
+    oneOffEvents.push(createOneOffEvent({ label: 'Repos', category: 'repos', date: addDaysISO(todayIso, r.int(0, 12)), startTime: '00:00', endTime: '23:59' }));
+  }
+
+  const state = { tasks: [], sessions: [], weeklyConstraints, oneOffEvents, chapters: [], recurringColleTemplates: [], vacations, settings };
 
   for (let i = 0, n = r.int(1, 8); i < n; i++) {
     const type = r.pick(['dm', 'exercices', 'lecture', 'autre', 'revision_ds', 'preparation_colle']);
@@ -120,6 +140,7 @@ function genScenario(seed) {
 export function checkScenario(seed, tamper) {
   const { now, state, todayIso } = genScenario(seed);
   const { settings, weeklyConstraints, oneOffEvents, tasks } = state;
+  const vacations = state.vacations;
   const result = recomputeSchedule(now, state);
   if (tamper) tamper(result, state); // utilisé par l'auto-vérification : on sabote le résultat pour voir si le test le détecte
   const tasksById = new Map(tasks.map((t) => [t.id, t]));
@@ -144,9 +165,8 @@ export function checkScenario(seed, tamper) {
     if (a < dayStart || b > dayEnd) fail('R1 hors des bornes de la journée', where);
 
     // R2 pas de chevauchement avec cours/événements/trajet
-    const weekday = weekdayOfISO(s.date);
     for (const c of weeklyConstraints) {
-      if (c.active && c.daysOfWeek.includes(weekday) && a < timeToMinutes(c.endTime) && timeToMinutes(c.startTime) < b) {
+      if (constraintAppliesOnDate(c, s.date, vacations) && a < timeToMinutes(c.endTime) && timeToMinutes(c.startTime) < b) {
         fail('R2 chevauche un créneau récurrent', `${where} x ${c.label} ${c.startTime}-${c.endTime}`);
       }
     }
@@ -155,8 +175,12 @@ export function checkScenario(seed, tamper) {
         fail('R2 chevauche un événement ponctuel', `${where} x ${e.category} ${e.startTime}-${e.endTime}`);
       }
     }
-    const travel = travelBlockForDate(s.date, weeklyConstraints, settings);
+    const travel = travelBlockForDate(s.date, weeklyConstraints, settings, vacations);
     if (travel && a < timeToMinutes(travel.end) && timeToMinutes(travel.start) < b) fail('R2 chevauche le trajet retour', `${where} x ${travel.start}-${travel.end}`);
+
+    // R9 vacances : pas avant l'heure de début des vacances
+    const vac = vacationForDate(s.date, vacations);
+    if (vac && a < timeToMinutes(vac.startTime)) fail('R9 session avant le début de journée des vacances', `${where} (dès ${vac.startTime})`);
 
     // R4 durée
     if (!(b - a > 0)) fail('R4 durée nulle ou négative', where);
@@ -164,7 +188,7 @@ export function checkScenario(seed, tamper) {
 
     // R6 jamais après l'échéance (sauf tâche déjà en retard)
     if (task && task.deadlineDate) {
-      const dl = effectiveDeadlineTime(task, weeklyConstraints, oneOffEvents, settings);
+      const dl = effectiveDeadlineTime(task, weeklyConstraints, oneOffEvents, settings, vacations);
       const deadlineInstant = combineDateTime(task.deadlineDate, dl);
       if (deadlineInstant.getTime() > now.getTime() && combineDateTime(s.date, s.endTime).getTime() > deadlineInstant.getTime()) {
         fail('R6 session après l’échéance', `${where} échéance ${task.deadlineDate} ${dl}`);
@@ -184,7 +208,8 @@ export function checkScenario(seed, tamper) {
         else if (gap < settings.breakDurationMinutes) fail('R3 pause trop courte entre sessions', `${date} gap=${gap} (min ${settings.breakDurationMinutes})`);
       }
     }
-    const cap = isWeekendISO(date) ? settings.dailyCapWeekendMinutes : settings.dailyCapWeekdayMinutes;
+    const vacDay = vacationForDate(date, vacations);
+    const cap = vacDay ? vacDay.dailyCapMinutes : isWeekendISO(date) ? settings.dailyCapWeekendMinutes : settings.dailyCapWeekdayMinutes;
     if (total > cap + 5 * list.length) fail('R5 plafond journalier dépassé', `${date} ${total} min > ${cap}`);
   }
 
@@ -194,7 +219,7 @@ export function checkScenario(seed, tamper) {
     if (t.status === 'termine' || !t.deadlineDate) continue;
     // Révision de DS / préparation de colle dont l'échéance est passée : le moteur les ignore volontairement.
     if (t.type === 'preparation_colle' || t.type === 'revision_ds') {
-      const dl = combineDateTime(t.deadlineDate, effectiveDeadlineTime(t, weeklyConstraints, oneOffEvents, settings));
+      const dl = combineDateTime(t.deadlineDate, effectiveDeadlineTime(t, weeklyConstraints, oneOffEvents, settings, vacations));
       if (dl.getTime() <= now.getTime()) continue;
     }
     const placed = result.sessions.filter((s) => s.taskId === t.id);

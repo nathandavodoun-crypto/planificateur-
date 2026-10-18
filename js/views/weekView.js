@@ -6,13 +6,14 @@
 
 import { getState, deleteTask, deleteWeeklyConstraint, deleteOneOffEvent } from '../store.js';
 import { travelBlockForDate } from '../travel.js';
+import { constraintAppliesOnDate } from '../vacations.js';
 import { todayISO, addDaysISO, weekdayOfISO, timeToMinutes, minutesToTime, formatDateFR } from '../utils/date.js';
 
 const PX_PER_MINUTE = 0.75;
 
 const CATEGORY_LABELS = {
   cours: 'Cours', sport: 'Sport', repas: 'Repas', trajet: 'Trajet', autre: 'Autre',
-  ds: 'DS', colle: 'Colle', adhoc: 'Imprévu',
+  ds: 'DS', colle: 'Colle', adhoc: 'Imprévu', repos: 'Repos',
 };
 
 function mondayOf(dateISO) {
@@ -35,16 +36,13 @@ function subjectMeta(subjectId, settings) {
 }
 
 function collectDayItems(dateISO, state) {
-  const weekday = weekdayOfISO(dateISO);
   const items = [];
 
   for (const c of state.weeklyConstraints) {
-    if (!c.active || !c.daysOfWeek.includes(weekday)) continue;
-    if (c.effectiveFrom && dateISO < c.effectiveFrom) continue;
-    if (c.effectiveUntil && dateISO > c.effectiveUntil) continue;
+    if (!constraintAppliesOnDate(c, dateISO, state.vacations)) continue;
     items.push({ kind: 'constraint', ref: c, start: c.startTime, end: c.endTime, label: `${CATEGORY_LABELS[c.category]} — ${c.label}`, color: '#6B7280' });
   }
-  const travel = travelBlockForDate(dateISO, state.weeklyConstraints, state.settings);
+  const travel = travelBlockForDate(dateISO, state.weeklyConstraints, state.settings, state.vacations);
   if (travel) items.push({ kind: 'travel', start: travel.start, end: travel.end, label: 'Trajet retour', color: '#6B7280' });
   for (const ev of state.oneOffEvents) {
     if (ev.date !== dateISO) continue;
@@ -156,8 +154,10 @@ export function renderWeekView(container) {
     col.style.backgroundImage = `repeating-linear-gradient(to bottom, var(--border) 0, var(--border) 1px, transparent 1px, transparent ${hourPx}px)`;
 
     for (const item of collectDayItems(dateISO, state)) {
-      const startMin = timeToMinutes(item.start);
-      const endMin = timeToMinutes(item.end);
+      // Bornés à la grille (un jour de repos couvre 00:00–23:59).
+      const startMin = Math.max(dayStartMin, timeToMinutes(item.start));
+      const endMin = Math.min(dayEndMin, timeToMinutes(item.end));
+      if (endMin <= startMin) continue;
       const block = document.createElement('div');
       block.className = 'week-block' + (item.kind !== 'session' ? ' week-block-fixed' : '');
       block.style.top = (startMin - dayStartMin) * PX_PER_MINUTE + 'px';
