@@ -148,25 +148,90 @@ function pickIndex(n) {
   return i;
 }
 
+const sleep = (ms) => new Promise((r) => window.setTimeout(r, ms));
+
 /**
  * Affiche l'écran d'accueil. `rows` = images à tirer au sort (vide → écran
  * « Éveil » avec une phrase). Renvoie une promesse résolue à la fermeture.
+ *
+ * L'image est d'abord DÉCODÉE en arrière-plan (l'écran reste noir pendant ce
+ * temps) ; le compte à rebours ne démarre qu'une fois l'image réellement
+ * affichée. Sinon, sur un téléphone, une grande image apparaissait d'un coup
+ * en plein milieu (une page de manga blanche = un éclair blanc) et une partie
+ * de la durée choisie était déjà écoulée.
  */
-export function showSplash(rows, { seconds = 4 } = {}) {
-  return new Promise((resolve) => {
-    let el = document.getElementById('splash');
-    if (!el) {
-      el = document.createElement('div');
-      el.id = 'splash';
-      document.body.appendChild(el);
-    }
-    window.clearTimeout(window.__splashFallback);
-    el.className = 'splash';
-    el.innerHTML = '';
+export async function showSplash(rows, { seconds = 4 } = {}) {
+  let el = document.getElementById('splash');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'splash';
+    document.body.appendChild(el);
+  }
+  window.clearTimeout(window.__splashFallback);
+  el.className = 'splash is-boot';
+  el.innerHTML = '';
 
-    let url = null;
+  // 1. Préparer l'image (décodage) pendant que l'écran est noir.
+  let url = null;
+  let img = null;
+  if (rows.length > 0) {
+    const row = rows[pickIndex(rows.length)];
+    url = URL.createObjectURL(row.blob);
+    img = new Image();
+    img.className = 'splash-img';
+    img.alt = '';
+    img.decoding = 'async';
+    img.src = url;
+    try {
+      await Promise.race([img.decode(), sleep(4000).then(() => Promise.reject(new Error('décodage trop long')))]);
+    } catch (e) {
+      console.warn('Image d’accueil non affichable, écran par défaut :', e);
+      URL.revokeObjectURL(url);
+      url = null;
+      img = null;
+    }
+  }
+
+  // 2. Construire l'écran.
+  const foot = document.createElement('div');
+  foot.className = 'splash-foot';
+  const quote = document.createElement('div');
+  quote.className = 'splash-quote';
+  quote.textContent = QUOTES[Math.floor(Math.random() * QUOTES.length)];
+  const info = document.createElement('div');
+  info.className = 'splash-info';
+  info.textContent = todaySummary();
+  const hint = document.createElement('div');
+  hint.className = 'splash-hint';
+  hint.textContent = 'Touche pour entrer';
+  foot.append(quote, info, hint);
+
+  const progress = document.createElement('div');
+  progress.className = 'splash-progress';
+  progress.innerHTML = '<i></i>';
+  if (seconds > 0) progress.firstChild.style.animationDuration = `${seconds}s`;
+  else progress.hidden = true;
+
+  if (img) {
+    const stage = document.createElement('div');
+    stage.className = 'splash-stage';
+    stage.appendChild(img);
+    el.append(stage);
+  } else {
+    el.classList.add('is-awake');
+    const mark = document.createElement('div');
+    mark.className = 'splash-mark';
+    mark.textContent = 'Planificateur';
+    el.append(mark);
+  }
+  el.append(foot, progress);
+  el.classList.remove('is-boot');
+
+  // 3. Le temps d'affichage démarre MAINTENANT (image visible).
+  return new Promise((resolve) => {
     let timer = null;
     let closed = false;
+    const shownAt = Date.now();
     function close() {
       if (closed) return;
       closed = true;
@@ -176,49 +241,12 @@ export function showSplash(rows, { seconds = 4 } = {}) {
         el.remove();
         if (url) URL.revokeObjectURL(url);
         resolve();
-      }, 450);
+      }, 600);
     }
-
-    const foot = document.createElement('div');
-    foot.className = 'splash-foot';
-    const quote = document.createElement('div');
-    quote.className = 'splash-quote';
-    quote.textContent = QUOTES[Math.floor(Math.random() * QUOTES.length)];
-    const info = document.createElement('div');
-    info.className = 'splash-info';
-    info.textContent = todaySummary();
-    const hint = document.createElement('div');
-    hint.className = 'splash-hint';
-    hint.textContent = 'Touche pour entrer';
-    foot.append(quote, info, hint);
-
-    const progress = document.createElement('div');
-    progress.className = 'splash-progress';
-    progress.innerHTML = '<i></i>';
-    if (seconds > 0) progress.firstChild.style.animationDuration = `${seconds}s`;
-    else progress.hidden = true;
-
-    if (rows.length > 0) {
-      const row = rows[pickIndex(rows.length)];
-      url = URL.createObjectURL(row.blob);
-      const bg = document.createElement('div');
-      bg.className = 'splash-bg';
-      bg.style.backgroundImage = `url("${url}")`;
-      const img = document.createElement('img');
-      img.className = 'splash-img';
-      img.alt = '';
-      img.src = url;
-      el.append(bg, img);
-    } else {
-      el.classList.add('is-awake');
-      const mark = document.createElement('div');
-      mark.className = 'splash-mark';
-      mark.textContent = 'Planificateur';
-      el.append(mark);
-    }
-    el.append(foot, progress);
-
-    el.addEventListener('click', close);
+    // Un toucher parasite juste après l'ouverture ne doit pas fermer l'écran.
+    el.addEventListener('click', () => {
+      if (Date.now() - shownAt > 700) close();
+    });
     if (seconds > 0) timer = window.setTimeout(close, seconds * 1000);
   });
 }
