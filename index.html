@@ -55,6 +55,10 @@
     <i class="mote"></i><i class="mote"></i><i class="mote"></i><i class="mote"></i>
   </div>
 
+  <!-- Écran d'accueil : présent dès le premier affichage (pas d'éclair de l'app avant l'image). -->
+  <div id="splash" class="splash is-boot"></div>
+  <script>window.__splashFallback = setTimeout(function () { var e = document.getElementById('splash'); if (e) e.remove(); }, 9000);</script>
+
   <div id="app"></div>
 
   <nav class="bottom-nav">

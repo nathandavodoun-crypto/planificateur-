@@ -10,6 +10,7 @@ import { renderTaskFormView } from './views/taskFormView.js';
 import { renderTaskListView } from './views/taskListView.js';
 import { renderSettingsView } from './views/settingsView.js';
 import { startNotificationChecks } from './notifications.js';
+import { startSplash } from './splash.js';
 
 const routes = {
   '#/jour': renderDayView,
@@ -47,6 +48,12 @@ if (!location.hash) location.hash = '#/jour';
 render();
 
 startNotificationChecks();
+
+// Écran d'accueil (image tirée au sort parmi celles de l'utilisateur).
+startSplash().catch((e) => {
+  console.warn('Écran d’accueil impossible :', e);
+  document.getElementById('splash')?.remove();
+});
 
 // Service worker : cache des fichiers statiques pour le hors-ligne, et
 // condition pour que l'app soit installable ("Ajouter à l'écran d'accueil").

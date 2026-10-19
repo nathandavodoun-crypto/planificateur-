@@ -370,6 +370,11 @@ function sanitizeSettings(settings) {
     if (typeof ps.minChunkMinutes !== 'number' || ps.minChunkMinutes < 15) ps.minChunkMinutes = 15;
     if (typeof ps.shrinkPerDayMinutes !== 'number' || ps.shrinkPerDayMinutes < 0) ps.shrinkPerDayMinutes = 0;
   }
+  if (settings.splash) {
+    const sp = settings.splash;
+    if (typeof sp.seconds !== 'number' || Number.isNaN(sp.seconds) || sp.seconds < 0) sp.seconds = 0;
+    if (sp.seconds > 30) sp.seconds = 30;
+  }
   if (settings.dsDailyRevision) {
     const ds = settings.dsDailyRevision;
     if (typeof ds.minutesPerDay !== 'number' || ds.minutesPerDay < 15) ds.minutesPerDay = 15;

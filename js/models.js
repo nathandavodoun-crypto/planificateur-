@@ -92,6 +92,12 @@ export function defaultSettings() {
       daysBefore: 6,
     },
 
+    // Écran d'accueil au lancement (images ajoutées par l'utilisateur dans l'app).
+    splash: {
+      enabled: true,
+      seconds: 4, // 0 = reste affiché jusqu'au toucher
+    },
+
     minGapDaysSameTaskDefault: 0,
     minGapDaysDsRevision: 1,
 

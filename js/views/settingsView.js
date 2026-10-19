@@ -17,6 +17,7 @@ import {
 } from '../store.js';
 import { defaultSettings } from '../models.js';
 import { renderVacationsSection } from './vacationsSection.js';
+import { renderSplashSection } from './splashSection.js';
 import { formatDateFR } from '../utils/date.js';
 import {
   isSupported as notificationsSupported,
@@ -126,6 +127,7 @@ export function renderSettingsView(container) {
 
   wrapper.appendChild(renderGeneralSection(state));
   wrapper.appendChild(renderVacationsSection(state));
+  wrapper.appendChild(renderSplashSection(state));
   wrapper.appendChild(renderNotificationsSection(state));
   wrapper.appendChild(renderColleAndRepetitionSection(state));
   wrapper.appendChild(renderAnkiSection());
