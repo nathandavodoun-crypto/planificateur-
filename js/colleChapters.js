@@ -238,7 +238,8 @@ export function ensureSpacedRepetitionTasks(state, now) {
  *   AVANT sa date (jamais après : l'échéance reste stricte) ; un chapitre déjà
  *   en retard prend le premier jour libre à partir d'aujourd'hui.
  * - Avec l'option "avance", un chapitre dû peu après la reprise est ramené
- *   dans les vacances.
+ *   dans les vacances, puis (s'il reste des jours libres) les chapitres dus plus
+ *   tard, les plus proches d'abord : réviser en avance ne fait rien perdre.
  * - Un chapitre déjà commencé garde son jour. Jours de repos exclus.
  * - Faute de jour libre, le chapitre garde son petit bloc habituel.
  */
@@ -278,16 +279,18 @@ export function applyVacationFocus(state, now) {
       }
     }
     // 2. Les autres : les plus en retard / les plus proches d'abord.
+    // (les chapitres dus bien plus tard ne sont ramenés dans les vacances que
+    // pour remplir les jours restants, et seulement avec l'option "avance")
     const todo = tasks
-      .filter((t) => !assigned.has(t.id) && t.deadlineDate <= ahead)
+      .filter((t) => !assigned.has(t.id) && (t.deadlineDate <= ahead || v.workAhead))
       .sort((a, b) => {
         if (a.deadlineDate !== b.deadlineDate) return a.deadlineDate < b.deadlineDate ? -1 : 1;
         return (subjectOrder.get(a.subject) ?? 999) - (subjectOrder.get(b.subject) ?? 999);
       });
     for (const t of todo) {
       let day = null;
-      if (t.deadlineDate < days[0]) {
-        // En retard (ou dû avant le début des vacances) : premier jour libre.
+      if (t.deadlineDate < days[0] || t.deadlineDate > ahead) {
+        // En retard / dû avant les vacances, ou bien dû longtemps après : premier jour libre.
         day = days.find((d) => !used.has(d)) || null;
       } else {
         const upper = t.deadlineDate < v.endDate ? t.deadlineDate : v.endDate;

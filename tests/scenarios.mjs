@@ -1103,9 +1103,14 @@ function scenarioR() {
   check('Les chapitres en retard passent en premier (Suites le lundi 19, puis Optique)', daysOf('Suites')[0] === '2026-10-19' && daysOf('Optique')[0] === '2026-10-20');
   check('Deux chapitres dus le même jour (23) : l\'un prend le 23, l\'autre le jour libre juste avant (jamais après l\'échéance)', [daysOf('Cinétique')[0], daysOf('Intégrales')[0]].sort().join() === '2026-10-22,2026-10-23');
   check('Un chapitre dû après la reprise est ramené dans les vacances', daysOf('Mécanique')[0] <= '2026-10-25');
-  check('Un chapitre lointain (décembre) garde son petit bloc habituel', minutesOf('Lointain') === 0 || (taskOf('Lointain').estimatedDurationMinutes === settings.spacedRepetition.defaultDurationMinutes && !taskOf('Lointain').focusDate));
+  check('Un chapitre dû bien plus tard (décembre) remplit le jour libre restant (24/10) au lieu de laisser un trou', daysOf('Lointain').join() === '2026-10-24' && minutesOf('Lointain') === 120);
   check('Aucune séance de révision ne dépasse la durée max d\'une session (2 h = 2 blocs de 60 min)', r.sessions.every((x) => x.durationMinutes <= settings.maxSessionLengthMinutes));
   check('Aucun avertissement', r.warnings.length === 0);
+
+  // Sans l'option "avance", les chapitres lointains restent à leur date, en petit bloc.
+  const noAhead = build({ ...vac, workAhead: false });
+  const farTask = noAhead.data.tasks.find((t) => t.title === 'Révision — Lointain');
+  check('Sans l\'option "avance" : le chapitre lointain garde son petit bloc habituel', !farTask.focusDate && farTask.estimatedDurationMinutes === settings.spacedRepetition.defaultDurationMinutes);
 
   // Mode désactivé : petits blocs habituels.
   const off = build({ ...vac, focusMode: false });
