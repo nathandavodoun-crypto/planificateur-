@@ -1107,6 +1107,15 @@ function scenarioR() {
   check('Aucune séance de révision ne dépasse la durée max d\'une session (2 h = 2 blocs de 60 min)', r.sessions.every((x) => x.durationMinutes <= settings.maxSessionLengthMinutes));
   check('Aucun avertissement', r.warnings.length === 0);
 
+  // Plus de chapitres que de jours : aucun petit bloc ne doit rester au milieu des vacances.
+  const shortVac = createVacation({ label: 'Court', startDate: '2026-10-19', endDate: '2026-10-21', dailyCapMinutes: 240, startTime: '09:00', focusMode: true, focusMinutes: 120, workAhead: true, aheadDays: 7 });
+  const many = ['A', 'B', 'C', 'D', 'E'].map((n, i) => mk('Chap ' + n, ['maths', 'physique', 'chimie'][i % 3], ['2026-10-12', '2026-10-19', '2026-10-20', '2026-10-21', '2026-10-22'][i]));
+  const over = build(shortVac, many);
+  const revInVac = over.r.sessions.filter((x) => x.date >= '2026-10-19' && x.date <= '2026-10-21' && over.data.tasks.find((t) => t.id === x.taskId)?.type === 'revision_espacee');
+  check('Plus de chapitres (5) que de jours (3) : pendant les vacances, uniquement des grosses séances de focus, jamais de petit bloc', revInVac.length > 0 && revInVac.every((x) => over.data.tasks.find((t) => t.id === x.taskId).focusDate === x.date));
+  check('… les chapitres sans jour sont reportés juste après la reprise (pas perdus, pas avant la fin)', over.data.tasks.filter((t) => !t.focusDate).every((t) => t.deadlineDate > '2026-10-21') && over.data.tasks.filter((t) => t.focusDate).length === 2 && over.data.tasks.length === 5);
+  check('… et aucun avertissement', over.r.warnings.length === 0);
+
   // Sans l'option "avance", les chapitres lointains restent à leur date, en petit bloc.
   const noAhead = build({ ...vac, workAhead: false });
   const farTask = noAhead.data.tasks.find((t) => t.title === 'Révision — Lointain');

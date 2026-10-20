@@ -34,7 +34,7 @@ function makeRng(seed) {
 const SUBJECT_IDS = DEFAULT_SUBJECTS.map((s) => s.id);
 const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-function genScenario(seed) {
+export function genScenario(seed) {
   const r = makeRng(seed);
   const now = new Date(2026, r.int(8, 11), r.int(1, 28), r.int(5, 22), r.pick([0, 3, 5, 13, 30, 45]));
   const todayIso = iso(now);
@@ -178,6 +178,12 @@ export function checkScenario(seed, tamper) {
     }
     const travel = travelBlockForDate(s.date, weeklyConstraints, settings, vacations);
     if (travel && a < timeToMinutes(travel.end) && timeToMinutes(travel.start) < b) fail('R2 chevauche le trajet retour', `${where} x ${travel.start}-${travel.end}`);
+
+    // R10 mode focus : pendant des vacances en mode focus, une révision espacée n'est jamais un petit bloc isolé
+    if (task && task.type === 'revision_espacee') {
+      const vf = vacationForDate(s.date, vacations);
+      if (vf && vf.focusMode !== false && task.focusDate !== s.date) fail('R10 petit bloc de révision pendant des vacances en mode focus', where);
+    }
 
     // R9 vacances : pas avant l'heure de début des vacances
     const vac = vacationForDate(s.date, vacations);

@@ -6,7 +6,7 @@
 // événements et chapitres qui servent ensuite d'entrée au moteur pur.
 
 import { createTask, createOneOffEvent, createChapter } from './models.js';
-import { todayISO, weekdayOfISO, addDaysISO, combineDateTime, round5 } from './utils/date.js';
+import { todayISO, weekdayOfISO, addDaysISO, combineDateTime, round5, nowMinutes, timeToMinutes } from './utils/date.js';
 
 function findTask(state, id) {
   return state.tasks.find((t) => t.id === id);
@@ -266,7 +266,14 @@ export function applyVacationFocus(state, now) {
       if (!rest.has(d)) days.push(d);
     }
     if (days.length === 0) continue;
-    const minutes = Math.max(20, Number(v.focusMinutes) || 120);
+    // La séance doit tenir dans la charge max du jour de ces vacances.
+    const cap = typeof v.dailyCapMinutes === 'number' ? v.dailyCapMinutes : Infinity;
+    if (cap < 20) continue; // journée de travail quasi nulle : pas de focus possible
+    const minutes = Math.min(Math.max(20, Number(v.focusMinutes) || 120), cap);
+    // Aujourd'hui, seulement s'il reste assez de journée pour la séance entière.
+    const dayEnd = timeToMinutes(state.settings.dayEndCutoff);
+    if (days[0] === todayIso && Math.ceil(nowMinutes(now) / 5) * 5 + minutes + 15 > dayEnd) days.shift();
+    if (days.length === 0) continue;
     const used = new Set([...assigned.values()].map((a) => a.date));
     const ahead = v.workAhead ? addDaysISO(v.endDate, v.aheadDays ?? 7) : v.endDate;
 
@@ -304,6 +311,29 @@ export function applyVacationFocus(state, now) {
       if (day) {
         assigned.set(t.id, { date: day, minutes });
         used.add(day);
+      }
+    }
+  }
+
+  // Pendant les vacances en mode focus, les jours appartiennent AUX SEULES grosses
+  // séances : un chapitre qui n'a pas eu de jour (plus de chapitres que de jours)
+  // ne doit pas retomber en petit bloc de 20 min au milieu des vacances. On le
+  // reporte juste après la reprise (sa fenêtre de placement ne touche plus les vacances).
+  const slack = state.settings.spacedRepetition.windowSlackDays ?? 2;
+  for (const t of tasks) {
+    if (assigned.has(t.id)) continue;
+    for (const v of vacations) {
+      const windowStart = addDaysISO(t.deadlineDate, -slack) > todayIso ? addDaysISO(t.deadlineDate, -slack) : todayIso;
+      const windowEnd = t.deadlineDate > todayIso ? t.deadlineDate : todayIso;
+      if (windowStart <= v.endDate && windowEnd >= v.startDate) {
+        const resumeDate = addDaysISO(v.endDate, slack + 1);
+        if (t.deadlineDate < resumeDate) {
+          const ch = findChapter(state, t.chapterId);
+          if (ch) ch.nextReviewDate = resumeDate;
+          t.deadlineDate = resumeDate;
+          t.updatedAt = now.getTime();
+        }
+        break;
       }
     }
   }

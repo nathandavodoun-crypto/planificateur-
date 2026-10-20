@@ -444,6 +444,8 @@ export function recomputeSchedule(now, data) {
         // tôt) plutôt que de rendre le devoir impossible à jamais.
         overdue: deadlineInstant.getTime() <= now.getTime(),
         notBeforeDate: notBeforeDates[i],
+        // Mode focus : la séance du chapitre reste CE jour-là (pas de glissement qui la couperait en petits blocs).
+        onlyOnDay: Boolean(task.type === 'revision_espacee' && task.focusDate),
         slackMinutes,
         priority: task.priority,
         placed: false,
