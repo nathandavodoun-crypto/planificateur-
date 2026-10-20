@@ -310,6 +310,8 @@ function renderNotificationsSection(state) {
       await sendTestNotification();
     } catch (e) {
       alert(`Impossible d'envoyer une notification de test : ${e.message}`);
+    } finally {
+      refreshStatus();
     }
   });
 

@@ -25,34 +25,80 @@ export async function requestPermission() {
   return Notification.requestPermission();
 }
 
-/**
- * Bouton "tester" dans les réglages : vérifie tout de suite si une
- * notification s'affiche vraiment, en remontant une erreur précise sinon
- * (contrairement aux vérifications périodiques, qui échouent en silence).
- */
-export async function sendTestNotification() {
-  await showNotification('Test du planificateur', 'Si tu vois ceci, les notifications fonctionnent sur cet appareil.');
+/** Résumé de l'environnement, joint aux erreurs pour comprendre ce qui bloque. */
+function diagnostics() {
+  const standalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+  const ua = navigator.userAgent || '';
+  const ios = /iPhone|iPad|iPod/.test(ua);
+  const iosVersion = (ua.match(/OS (\d+)[_.](\d+)/) || []).slice(1, 3).join('.');
+  return [
+    `permission : ${typeof Notification === 'undefined' ? 'API absente' : Notification.permission}`,
+    `appli installée (écran d'accueil) : ${standalone ? 'oui' : 'non'}`,
+    `service worker : ${'serviceWorker' in navigator ? (navigator.serviceWorker.controller ? 'actif' : 'présent mais pas encore actif') : 'absent'}`,
+    ios ? `iOS ${iosVersion || '?'}` : 'appareil non iOS',
+  ].join(' · ');
 }
 
-async function showNotification(title, body) {
+function withTimeout(promise, ms, label) {
+  return Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error(label)), ms))]);
+}
+
+/**
+ * Bouton "tester" dans les réglages : fait tout le chemin (demande de
+ * permission DANS le geste de l'utilisateur — iOS l'exige —, puis affichage
+ * via le service worker) et remonte une erreur précise sinon, avec un résumé
+ * de l'environnement.
+ */
+export async function sendTestNotification() {
+  if (!isSupported()) throw new Error(`Ce navigateur ne supporte pas l'API Notification. (${diagnostics()})`);
+
+  // Permission : demandée ICI, pendant le toucher du bouton (iOS refuse sinon).
+  if (Notification.permission === 'default') await Notification.requestPermission();
+  if (Notification.permission === 'denied') {
+    throw new Error(
+      "les notifications sont refusées pour cette app. Sur iPhone : Réglages → Notifications → Planificateur → Autoriser les notifications. Si l'app n'y figure pas, supprime-la de l'écran d'accueil, réinstalle-la depuis Safari, puis rouvre-la depuis son icône et réessaie. " +
+        `(${diagnostics()})`
+    );
+  }
+  if (Notification.permission !== 'granted') {
+    throw new Error(`permission non accordée. (${diagnostics()})`);
+  }
+
+  await showNotification('Test du planificateur', 'Si tu vois ceci, les notifications fonctionnent sur cet appareil.', true);
+}
+
+async function showNotification(title, body, verbose = false) {
   if (!isSupported()) throw new Error("Ce navigateur ne supporte pas l'API Notification.");
   if (Notification.permission !== 'granted') {
     throw new Error(`Permission non accordée (statut actuel : « ${Notification.permission} »).`);
   }
   const options = { body, icon: './icons/icon-192.png', badge: './icons/icon-192.png' };
-  // registration.showNotification() est nécessaire sur Android/Chrome (le
-  // constructeur Notification direct y est souvent indisponible) ; on
-  // retombe sur `new Notification()` si aucun service worker n'est prêt.
+  const problems = [];
+
+  // registration.showNotification() est la seule voie qui marche sur iOS et
+  // Android/Chrome ; le constructeur Notification direct y est interdit.
   if ('serviceWorker' in navigator) {
     try {
-      const reg = await navigator.serviceWorker.ready;
+      let reg = await navigator.serviceWorker.getRegistration();
+      if (!reg) reg = await navigator.serviceWorker.register('./sw.js');
+      reg = await withTimeout(navigator.serviceWorker.ready, 5000, "le service worker n'est pas prêt (rouvre l'app depuis son icône puis réessaie)");
       await reg.showNotification(title, options);
       return;
     } catch (e) {
-      console.warn('Notification via service worker impossible, repli direct :', e);
+      problems.push(`service worker : ${e && e.message ? e.message : e}`);
+      console.warn('Notification via service worker impossible :', e);
     }
+  } else {
+    problems.push('service worker absent');
   }
-  new Notification(title, options); // si ça échoue ici, l'erreur remonte à l'appelant
+
+  try {
+    new Notification(title, options); // repli (ordinateur) ; sur iOS ce constructeur est interdit
+  } catch (e) {
+    problems.push(`constructeur : ${e && e.message ? e.message : e}`);
+    const detail = problems.join(' | ');
+    throw new Error(verbose ? `${detail} (${diagnostics()})` : detail);
+  }
 }
 
 function checkDueSoon(state, now) {
