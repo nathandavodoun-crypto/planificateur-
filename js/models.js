@@ -169,6 +169,7 @@ export function createTask(partial) {
     manualSessions: null, // null => découpage automatique
     linkedEventId: null,
     dailyMinutes: null, // pour 'revision_ds' auto-généré : minutes à réviser CHAQUE jour avant le DS
+    focusDate: null, // pour 'revision_espacee' en mode focus (vacances) : le jour où ce chapitre a sa grosse séance
     chapterId: null, // pour 'revision_espacee' : le chapitre concerné
     linkedChapterIds: [], // pour 'preparation_colle' auto-généré : chapitres fusionnés
     status: 'a_faire',
@@ -243,6 +244,10 @@ export function createVacation(partial) {
     startTime: '09:00', // matin libre
     workAhead: true,
     aheadDays: 7,
+    // Mode focus : un seul chapitre par jour, en une longue séance, au lieu de
+    // petits blocs de 20 min sur toutes les matières.
+    focusMode: true,
+    focusMinutes: 120,
     ...partial,
   };
 }

@@ -227,6 +227,101 @@ export function ensureSpacedRepetitionTasks(state, now) {
   }
 }
 
+/**
+ * Mode focus des vacances : pendant une période de vacances, chaque chapitre à
+ * réviser reçoit SA journée (un seul chapitre par jour) et une longue séance
+ * (`focusMinutes`, ex. 2 h) au lieu du petit bloc de 20 min habituel. Upsert
+ * idempotent, comme les autres : il ne fait que poser `focusDate` et la durée
+ * sur la tâche de révision ; le moteur n'a qu'à placer ce jour-là.
+ *
+ * - Un chapitre dû pendant les vacances prend le jour libre le plus proche
+ *   AVANT sa date (jamais après : l'échéance reste stricte) ; un chapitre déjà
+ *   en retard prend le premier jour libre à partir d'aujourd'hui.
+ * - Avec l'option "avance", un chapitre dû peu après la reprise est ramené
+ *   dans les vacances.
+ * - Un chapitre déjà commencé garde son jour. Jours de repos exclus.
+ * - Faute de jour libre, le chapitre garde son petit bloc habituel.
+ */
+export function applyVacationFocus(state, now) {
+  const todayIso = todayISO(now);
+  const defaultMinutes = state.settings.spacedRepetition.defaultDurationMinutes;
+  const subjectOrder = new Map((state.settings.subjects || []).map((s, i) => [s.id, i]));
+  const rest = new Set(state.oneOffEvents.filter((e) => e.category === 'repos').map((e) => e.date));
+  const doneByTask = new Map();
+  for (const sess of state.sessions) {
+    if (sess.status === 'terminee') doneByTask.set(sess.taskId, (doneByTask.get(sess.taskId) || 0) + sess.durationMinutes);
+  }
+
+  const tasks = state.tasks.filter((t) => t.type === 'revision_espacee' && t.chapterId && t.status !== 'termine');
+  const assigned = new Map(); // taskId -> { date, minutes }
+
+  const vacations = (state.vacations || [])
+    .filter((v) => v.startDate && v.endDate && v.focusMode !== false && v.endDate >= todayIso)
+    .sort((a, b) => (a.startDate < b.startDate ? -1 : 1));
+
+  for (const v of vacations) {
+    const days = [];
+    for (let d = todayIso > v.startDate ? todayIso : v.startDate; d <= v.endDate; d = addDaysISO(d, 1)) {
+      if (!rest.has(d)) days.push(d);
+    }
+    if (days.length === 0) continue;
+    const minutes = Math.max(20, Number(v.focusMinutes) || 120);
+    const used = new Set([...assigned.values()].map((a) => a.date));
+    const ahead = v.workAhead ? addDaysISO(v.endDate, v.aheadDays ?? 7) : v.endDate;
+
+    // 1. Les chapitres déjà commencés gardent leur jour.
+    for (const t of tasks) {
+      if (assigned.has(t.id)) continue;
+      if ((doneByTask.get(t.id) || 0) > 0 && t.focusDate && days.includes(t.focusDate) && !used.has(t.focusDate)) {
+        assigned.set(t.id, { date: t.focusDate, minutes });
+        used.add(t.focusDate);
+      }
+    }
+    // 2. Les autres : les plus en retard / les plus proches d'abord.
+    const todo = tasks
+      .filter((t) => !assigned.has(t.id) && t.deadlineDate <= ahead)
+      .sort((a, b) => {
+        if (a.deadlineDate !== b.deadlineDate) return a.deadlineDate < b.deadlineDate ? -1 : 1;
+        return (subjectOrder.get(a.subject) ?? 999) - (subjectOrder.get(b.subject) ?? 999);
+      });
+    for (const t of todo) {
+      let day = null;
+      if (t.deadlineDate < days[0]) {
+        // En retard (ou dû avant le début des vacances) : premier jour libre.
+        day = days.find((d) => !used.has(d)) || null;
+      } else {
+        const upper = t.deadlineDate < v.endDate ? t.deadlineDate : v.endDate;
+        for (let i = days.length - 1; i >= 0; i--) {
+          if (days[i] <= upper && !used.has(days[i])) {
+            day = days[i];
+            break;
+          }
+        }
+      }
+      if (day) {
+        assigned.set(t.id, { date: day, minutes });
+        used.add(day);
+      }
+    }
+  }
+
+  for (const t of tasks) {
+    const a = assigned.get(t.id);
+    if (a) {
+      if (t.focusDate !== a.date || t.estimatedDurationMinutes !== a.minutes) {
+        t.focusDate = a.date;
+        t.estimatedDurationMinutes = a.minutes;
+        t.updatedAt = now.getTime();
+      }
+    } else if (t.focusDate) {
+      // N'est plus en mode focus (vacances modifiées, jour pris…) : retour au petit bloc habituel.
+      t.focusDate = null;
+      t.estimatedDurationMinutes = defaultMinutes;
+      t.updatedAt = now.getTime();
+    }
+  }
+}
+
 /** Crée ou met à jour la tâche `preparation_colle` liée à une colle, selon ses chapitres actuels. */
 export function upsertPreparationColleTask(state, event, now) {
   if (!event.chapterIds || event.chapterIds.length === 0) {

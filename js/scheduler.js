@@ -155,6 +155,10 @@ function computeWindowForTask(task, todayIso, settings, vacations = []) {
     const targetLastDay = maxISO([earliestDay, addDaysISO(task.deadlineDate, -revisionLeadDaysMin)]);
     return { earliestDay, targetLastDay };
   }
+  if (task.type === 'revision_espacee' && task.focusDate) {
+    // Mode focus (vacances) : ce chapitre a sa journée, rien d'autre ce jour-là pour lui.
+    return { earliestDay: task.focusDate, targetLastDay: task.focusDate };
+  }
   if (task.type === 'revision_espacee') {
     const earliestDay = maxISO([todayIso, addDaysISO(task.deadlineDate, -settings.spacedRepetition.windowSlackDays)]);
     const targetLastDay = maxISO([earliestDay, task.deadlineDate]);

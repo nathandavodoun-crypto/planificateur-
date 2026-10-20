@@ -23,6 +23,7 @@ import {
   ensureSpacedRepetitionTasks,
   ensureDsRevisionTasks,
   planVacationCatchUp,
+  applyVacationFocus,
   setColleChapters,
   handleTaskCompletionSideEffects,
   importChapters,
@@ -1061,6 +1062,65 @@ function scenarioQ() {
 }
 
 // ---------------------------------------------------------------------------
+// Scénario R — Mode focus des vacances : un chapitre par jour, longue séance
+// ---------------------------------------------------------------------------
+
+function scenarioR() {
+  const now = new Date(2026, 9, 19, 8, 0); // lundi 19/10/2026, 08:00
+  const settings = defaultSettings();
+  const vac = createVacation({ label: 'Toussaint', startDate: '2026-10-19', endDate: '2026-10-25', dailyCapMinutes: 240, startTime: '09:00', focusMode: true, focusMinutes: 120, workAhead: true, aheadDays: 7 });
+  const rest = createOneOffEvent({ label: 'Repos', category: 'repos', date: '2026-10-21', startTime: '00:00', endTime: '23:59' });
+  const mk = (title, subject, nextReviewDate) => createChapter({ subject, title, dateSeen: '2026-09-01', status: 'active', stage: 0, nextReviewDate });
+  const chapters = [
+    mk('Suites', 'maths', '2026-10-12'), // en retard
+    mk('Optique', 'physique', '2026-10-15'), // en retard
+    mk('Cinétique', 'chimie', '2026-10-23'), // dû pendant les vacances
+    mk('Intégrales', 'maths', '2026-10-23'), // dû le même jour : doit passer un autre jour
+    mk('Mécanique', 'physique', '2026-10-28'), // dû après la reprise (7 j) : ramené dans les vacances
+    mk('Lointain', 'maths', '2026-12-10'), // sans rapport avec les vacances
+  ];
+  const build = (v = vac, ch = chapters) => {
+    const data = { tasks: [], sessions: [], weeklyConstraints: [], oneOffEvents: [rest], chapters: ch.map((c) => ({ ...c })), recurringColleTemplates: [], vacations: [v], settings };
+    ensureSpacedRepetitionTasks(data, now);
+    applyVacationFocus(data, now);
+    const r = recomputeSchedule(now, data);
+    return { data, r };
+  };
+  const { data, r } = build();
+  const taskOf = (title) => data.tasks.find((t) => t.title === `Révision — ${title}`);
+  const sessionsOf = (title) => r.sessions.filter((x) => x.taskId === taskOf(title)?.id);
+  const daysOf = (title) => [...new Set(sessionsOf(title).map((x) => x.date))].sort();
+  const minutesOf = (title) => sessionsOf(title).reduce((a, x) => a + x.durationMinutes, 0);
+
+  console.log('\n=== Scénario R : mode focus (un chapitre par jour) ===');
+  for (const c of chapters) console.log(`  ${c.title} (dû ${c.nextReviewDate}) → ${daysOf(c.title).join(', ') || '(rien)'} · ${minutesOf(c.title)} min`);
+
+  const focused = ['Suites', 'Optique', 'Cinétique', 'Intégrales', 'Mécanique'];
+  check('Chaque chapitre du programme a une longue séance de 2 h au total', focused.every((t) => minutesOf(t) === 120));
+  check('… concentrée sur UN seul jour par chapitre', focused.every((t) => daysOf(t).length === 1));
+  check('… et jamais deux chapitres le même jour', new Set(focused.map((t) => daysOf(t)[0])).size === focused.length);
+  check('… jamais le jour de repos (21/10) ni hors des vacances', focused.every((t) => daysOf(t)[0] !== '2026-10-21' && daysOf(t)[0] >= '2026-10-19' && daysOf(t)[0] <= '2026-10-25'));
+  check('Les chapitres en retard passent en premier (Suites le lundi 19, puis Optique)', daysOf('Suites')[0] === '2026-10-19' && daysOf('Optique')[0] === '2026-10-20');
+  check('Deux chapitres dus le même jour (23) : l\'un prend le 23, l\'autre le jour libre juste avant (jamais après l\'échéance)', [daysOf('Cinétique')[0], daysOf('Intégrales')[0]].sort().join() === '2026-10-22,2026-10-23');
+  check('Un chapitre dû après la reprise est ramené dans les vacances', daysOf('Mécanique')[0] <= '2026-10-25');
+  check('Un chapitre lointain (décembre) garde son petit bloc habituel', minutesOf('Lointain') === 0 || (taskOf('Lointain').estimatedDurationMinutes === settings.spacedRepetition.defaultDurationMinutes && !taskOf('Lointain').focusDate));
+  check('Aucune séance de révision ne dépasse la durée max d\'une session (2 h = 2 blocs de 60 min)', r.sessions.every((x) => x.durationMinutes <= settings.maxSessionLengthMinutes));
+  check('Aucun avertissement', r.warnings.length === 0);
+
+  // Mode désactivé : petits blocs habituels.
+  const off = build({ ...vac, focusMode: false });
+  const offTask = off.data.tasks.find((t) => t.title === 'Révision — Cinétique');
+  check('Mode focus désactivé : retour aux petits blocs de 20 min', off.data.tasks.every((t) => !t.focusDate && t.estimatedDurationMinutes === settings.spacedRepetition.defaultDurationMinutes) && !!offTask);
+
+  // Un chapitre déjà commencé garde son jour.
+  const inProgress = { ...data, sessions: [createSession({ taskId: taskOf('Suites').id, sessionIndex: 0, date: '2026-10-19', startTime: '09:00', endTime: '10:00', durationMinutes: 60, status: 'terminee' })] };
+  const before = taskOf('Suites').focusDate;
+  applyVacationFocus(inProgress, new Date(2026, 9, 19, 12, 0));
+  check('Un chapitre commencé aujourd\'hui garde son jour (pas de réaffectation en cours de route)', inProgress.tasks.find((t) => t.id === taskOf('Suites').id).focusDate === before);
+  check('Idempotent : plusieurs recalculs donnent le même programme', (() => { const a = build(); const b = build(); return a.data.tasks.map((t) => t.focusDate).join() === b.data.tasks.map((t) => t.focusDate).join(); })());
+}
+
+// ---------------------------------------------------------------------------
 
 scenarioA();
 scenarioB();
@@ -1079,6 +1139,7 @@ scenarioN();
 scenarioO();
 scenarioP();
 scenarioQ();
+scenarioR();
 
 console.log(`\n${totalChecks - failedChecks}/${totalChecks} vérifications passées.`);
 if (failedChecks > 0) {

@@ -6,6 +6,7 @@
 import {
   addVacation,
   deleteVacation,
+  updateVacation,
   planCatchUpForVacation,
   addRestDays,
   deleteOneOffEvent,
@@ -38,6 +39,31 @@ function renderReport(state, vacation) {
   return box;
 }
 
+// Mode focus : un seul chapitre par jour, en une longue séance.
+function renderFocusControls(v) {
+  const box = document.createElement('div');
+  box.className = 'vacation-focus';
+  const on = v.focusMode !== false;
+  const minutes = v.focusMinutes ?? 120;
+  box.innerHTML = `
+    <label class="checkbox-row">
+      <input type="checkbox" ${on ? 'checked' : ''} />
+      <span>🎯 Mode focus : un chapitre par jour, en une longue séance</span>
+    </label>
+  `;
+  const check = box.querySelector('input');
+  check.addEventListener('change', () => updateVacation(v.id, { focusMode: check.checked }));
+  if (on) {
+    const label = document.createElement('label');
+    label.innerHTML = `Durée de la séance par chapitre (min)
+      <input type="number" min="30" max="240" step="15" value="${minutes}" />`;
+    const input = label.querySelector('input');
+    input.addEventListener('change', () => updateVacation(v.id, { focusMinutes: Math.min(240, Math.max(30, Number(input.value) || 120)) }));
+    box.appendChild(label);
+  }
+  return box;
+}
+
 export function renderVacationsSection(state) {
   const section = document.createElement('div');
   section.className = 'section';
@@ -59,6 +85,7 @@ export function renderVacationsSection(state) {
       <div><strong>🏖️ ${escapeHtml(v.label)}</strong></div>
       <div class="meta">${formatDateFR(v.startDate)} → ${formatDateFR(v.endDate)} · max ${formatDuration(v.dailyCapMinutes)}/jour dès ${v.startTime}${v.workAhead ? ` · avance les devoirs dus jusqu'à ${v.aheadDays} j après la reprise` : ''}</div>
     `;
+    head.appendChild(renderFocusControls(v));
     head.appendChild(renderReport(state, v));
 
     const actions = document.createElement('div');
@@ -102,12 +129,19 @@ export function renderVacationsSection(state) {
       <label>Du <input type="date" name="startDate" value="${today}" required /></label>
       <label>Au <input type="date" name="endDate" required /></label>
       <label>Travail max / jour (min)
-        <input type="number" name="dailyCapMinutes" min="0" step="15" value="150" />
+        <input type="number" name="dailyCapMinutes" min="0" step="15" value="240" />
       </label>
       <label>Début de journée
         <input type="time" name="startTime" value="09:00" />
       </label>
     </div>
+    <label class="checkbox-row">
+      <input type="checkbox" name="focusMode" checked />
+      <span>🎯 Mode focus : chaque jour, un seul chapitre en révision, en une longue séance (au lieu de petits blocs sur toutes les matières).</span>
+    </label>
+    <label>Durée de la séance par chapitre (min)
+      <input type="number" name="focusMinutes" min="30" max="240" step="15" value="120" />
+    </label>
     <label class="checkbox-row">
       <input type="checkbox" name="workAhead" checked />
       <span>Avancer les devoirs dus dans les 7 jours après la reprise, pour les finir avant la fin des vacances.</span>
@@ -130,6 +164,8 @@ export function renderVacationsSection(state) {
       dailyCapMinutes: Math.max(0, Number(data.get('dailyCapMinutes')) || 0),
       startTime: data.get('startTime') || '09:00',
       workAhead: data.get('workAhead') === 'on',
+      focusMode: data.get('focusMode') === 'on',
+      focusMinutes: Math.min(240, Math.max(30, Number(data.get('focusMinutes')) || 120)),
     });
   });
   section.appendChild(form);

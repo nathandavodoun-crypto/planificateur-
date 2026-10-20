@@ -14,6 +14,7 @@ import {
   ensureRecurringColleInstances,
   ensureSpacedRepetitionTasks,
   ensureDsRevisionTasks,
+  applyVacationFocus,
   planVacationCatchUp,
   setColleChapters as setColleChaptersImpl,
   cascadeCleanupOneOffEvent,
@@ -86,6 +87,7 @@ function recompute() {
   // sessions que recomputeSchedule jette et régénère à chaque appel.
   ensureRecurringColleInstances(state, now);
   ensureSpacedRepetitionTasks(state, now);
+  applyVacationFocus(state, now);
   ensureDsRevisionTasks(state, now);
 
   const result = recomputeSchedule(now, state);
@@ -320,6 +322,13 @@ export function addVacation(partial) {
   state.vacations.push(vacation);
   commit();
   return vacation;
+}
+
+export function updateVacation(id, changes) {
+  const vacation = state.vacations.find((v) => v.id === id);
+  if (!vacation) return;
+  Object.assign(vacation, changes);
+  commit();
 }
 
 export function deleteVacation(id) {

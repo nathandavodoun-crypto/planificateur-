@@ -5,7 +5,7 @@
 
 import { recomputeSchedule, effectiveDeadlineTime } from '../js/scheduler.js';
 import { defaultSettings, createTask, createWeeklyConstraint, createOneOffEvent, createChapter, createVacation, DEFAULT_SUBJECTS } from '../js/models.js';
-import { ensureRecurringColleInstances, ensureSpacedRepetitionTasks, ensureDsRevisionTasks, setColleChapters, importChapters } from '../js/colleChapters.js';
+import { ensureRecurringColleInstances, ensureSpacedRepetitionTasks, ensureDsRevisionTasks, applyVacationFocus, setColleChapters, importChapters } from '../js/colleChapters.js';
 import { travelBlockForDate } from '../js/travel.js';
 import { vacationForDate, constraintAppliesOnDate } from '../js/vacations.js';
 import { timeToMinutes, minutesToTime, addDaysISO, todayISO, weekdayOfISO, isWeekendISO, combineDateTime, nowMinutes } from '../js/utils/date.js';
@@ -132,6 +132,7 @@ function genScenario(seed) {
   }
   ensureRecurringColleInstances(state, now);
   ensureSpacedRepetitionTasks(state, now);
+  applyVacationFocus(state, now);
   ensureDsRevisionTasks(state, now);
 
   return { now, state, todayIso };
