@@ -231,8 +231,8 @@ export function createOneOffEvent(partial) {
 
 /**
  * Période de vacances : pendant ces dates les cours (et le trajet retour) ne
- * bloquent plus rien, la journée de travail est plus légère (plafond et heure
- * de début propres) et, si `workAhead`, les devoirs dus dans les `aheadDays`
+ * bloquent plus rien, il n'y a AUCUNE limite de temps de travail par jour (tout
+ * doit tenir dans la période) et la journée commence à une heure propre et, si `workAhead`, les devoirs dus dans les `aheadDays`
  * jours qui suivent la reprise sont avancés pour être finis avant la fin.
  */
 export function createVacation(partial) {
@@ -241,7 +241,6 @@ export function createVacation(partial) {
     label: 'Vacances',
     startDate: null,
     endDate: null,
-    dailyCapMinutes: 150, // rythme léger
     startTime: '09:00', // matin libre
     workAhead: true,
     aheadDays: 7,

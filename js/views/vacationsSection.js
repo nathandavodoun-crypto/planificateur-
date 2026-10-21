@@ -62,7 +62,7 @@ export function renderVacationsSection(state) {
   const intro = document.createElement('p');
   intro.className = 'meta';
   intro.textContent =
-    "Pendant une période de vacances, tes cours et le trajet retour ne bloquent plus rien, la journée de travail est plus légère, et les devoirs dus juste après la reprise sont avancés. Un jour de repos n'a jamais de travail : ce qui était prévu est replacé ailleurs.";
+    "Pendant une période de vacances, tes cours et le trajet retour ne bloquent plus rien, il n'y a aucune limite de temps de travail par jour (tout doit tenir dans la période), et les devoirs dus juste après la reprise sont avancés. Un jour de repos n'a jamais de travail : ce qui était prévu est replacé ailleurs.";
   section.appendChild(intro);
 
   // ---- Périodes de vacances ----------------------------------------------
@@ -73,7 +73,7 @@ export function renderVacationsSection(state) {
     const head = document.createElement('div');
     head.innerHTML = `
       <div><strong>🏖️ ${escapeHtml(v.label)}</strong></div>
-      <div class="meta">${formatDateFR(v.startDate)} → ${formatDateFR(v.endDate)} · max ${formatDuration(v.dailyCapMinutes)}/jour dès ${v.startTime}${v.workAhead ? ` · avance les devoirs dus jusqu'à ${v.aheadDays} j après la reprise` : ''}</div>
+      <div class="meta">${formatDateFR(v.startDate)} → ${formatDateFR(v.endDate)} · pas de limite de temps par jour · dès ${v.startTime}${v.workAhead ? ` · avance les devoirs dus jusqu'à ${v.aheadDays} j après la reprise` : ''}</div>
     `;
     head.appendChild(renderPauseControl(v));
     head.appendChild(renderReport(state, v));
@@ -118,9 +118,6 @@ export function renderVacationsSection(state) {
     <div class="settings-grid">
       <label>Du <input type="date" name="startDate" value="${today}" required /></label>
       <label>Au <input type="date" name="endDate" required /></label>
-      <label>Travail max / jour (min)
-        <input type="number" name="dailyCapMinutes" min="0" step="15" value="240" />
-      </label>
       <label>Début de journée
         <input type="time" name="startTime" value="09:00" />
       </label>
@@ -148,7 +145,6 @@ export function renderVacationsSection(state) {
       label: data.get('label') || 'Vacances',
       startDate,
       endDate,
-      dailyCapMinutes: Math.max(0, Number(data.get('dailyCapMinutes')) || 0),
       startTime: data.get('startTime') || '09:00',
       workAhead: data.get('workAhead') === 'on',
       pauseSpaced: data.get('pauseSpaced') === 'on',

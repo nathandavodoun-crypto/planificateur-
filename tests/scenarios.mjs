@@ -1001,7 +1001,7 @@ function scenarioQ() {
   console.log(`  Lundi 19 (vacances) : ${lundi || '(rien)'}`);
   check('Pendant les vacances, plus de cours : le travail peut tomber sur les heures de cours du lundi, dès 10:00', r1.sessions.some((x) => x.date === '2026-10-19' && timeToMinutes(x.startTime) >= timeToMinutes('10:00') && timeToMinutes(x.startTime) < timeToMinutes('12:00')));
   check('… jamais avant l\'heure de début des vacances (10:00)', r1.sessions.every((x) => timeToMinutes(x.startTime) >= timeToMinutes('10:00')));
-  check('… avec le rythme léger : jamais plus de 120 min par jour', [...perDay(r1).values()].every((m) => m <= 125));
+  check('… et sans plafond de temps par jour : les 8 h du DM se casent dès les premiers jours des vacances (au moins une journée dépasse l\'ancienne limite de 2 h)', [...perDay(r1).values()].some((m) => m > 120) && r1.warnings.length === 0);
   check('… et pas de trajet retour pendant les vacances (mais toujours le midi)', travelBlockForDate('2026-10-19', constraints, settings, [vac]) === null && travelBlockForDate('2026-10-26', constraints, settings, [vac]) !== null);
   check('… la pause du midi reste respectée', r1.sessions.every((x) => timeToMinutes(x.endTime) <= timeToMinutes('12:00') || timeToMinutes(x.startTime) >= timeToMinutes('13:30')));
 
@@ -1088,7 +1088,7 @@ function scenarioR() {
   const days = chapters.map((t) => of(r2, t)[0].date);
   console.log(`  4 chapitres : ${days.join(', ')}`);
   check('4 chapitres pour la même date : chacun reçoit son bloc de 3 h', chapters.every((t) => of(r2, t).length === 1 && of(r2, t)[0].durationMinutes === 180));
-  check('… un seul chapitre par jour (la journée ne peut pas en contenir deux)', new Set(days).size === 4);
+  check('… répartis sur 4 jours différents, régulièrement (pas tous empilés au début)', new Set(days).size === 4 && days.slice().sort().pop() > '2026-10-21');
   check('… tous avant l\'échéance, sans avertissement', days.every((d) => d <= '2026-10-25') && r2.warnings.length === 0);
 
   // 3. Jour de repos : jamais dessus.
@@ -1149,11 +1149,11 @@ function scenarioS() {
   console.log('\n=== Scénario S : liste de 20 chapitres (3 h chacun) ===');
   console.log(`  ${r.sessions.length} blocs, ${perDay.size} jours, du ${r.sessions.map((x) => x.date).sort()[0]} au ${r.sessions.map((x) => x.date).sort().pop()}`);
   check('Les 20 chapitres reçoivent chacun un bloc de 3 h d\'affilée (60 h au total)', tasks.length === 20 && r.sessions.length === 20 && r.sessions.every((x) => x.durationMinutes === 180));
-  check('… un seul bloc par jour', [...perDay.values()].every((n) => n === 1));
+  check('… répartis régulièrement : jamais plus de 2 blocs le même jour', [...perDay.values()].every((n) => n <= 2));
   check('… tout avant l\'échéance, sans avertissement', r.sessions.every((x) => x.date <= '2026-11-15') && r.warnings.length === 0);
-  const tight = tasks.map((t) => ({ ...t, deadlineDate: '2026-10-25' }));
+  const tight = tasks.map((t) => ({ ...t, deadlineDate: '2026-10-19' }));
   const rt = recomputeSchedule(now, { tasks: tight, sessions: [], weeklyConstraints: [], oneOffEvents: [], vacations: [vac], settings });
-  check('Si la date est trop proche (7 jours pour 20 blocs) : 7 blocs placés et le reste signalé, jamais entassé', rt.sessions.length === 7 && rt.warnings.length === 13);
+  check('Si tout doit tenir en UN jour (sans plafond mais 13 h 30 de journée) : 4 blocs placés, le reste signalé comme impossible', rt.sessions.length === 4 && rt.warnings.length === 16);
 }
 
 // ---------------------------------------------------------------------------

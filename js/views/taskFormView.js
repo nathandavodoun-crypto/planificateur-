@@ -200,7 +200,7 @@ function renderRevisionForm(wrapper, state) {
   const note = document.createElement('p');
   note.className = 'notice';
   note.textContent =
-    "Tu donnes juste le(s) chapitre(s) : chacun devient UN bloc de révision d'affilée (3 h par défaut), jamais découpé en petits morceaux ni espacé. Plusieurs chapitres = un par jour, tant que la journée ne peut pas en contenir deux.";
+    "Tu donnes juste le(s) chapitre(s) : chacun devient UN bloc de révision d'affilée (3 h par défaut), jamais découpé en petits morceaux ni espacé. Plusieurs chapitres sont répartis régulièrement jusqu'à la date choisie (en vacances, sans limite de temps par jour : tout doit juste tenir avant la date).";
   wrapper.appendChild(note);
 
   const today = todayISO(new Date());
@@ -278,10 +278,11 @@ function renderRevisionForm(wrapper, state) {
     }
     const days = Math.round((new Date(deadlineDate + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000) + 1;
     const hours = Math.round(((toAdd.length * minutes) / 60) * 10) / 10;
+    const perDay = Math.round((hours / Math.max(1, days)) * 10) / 10;
     const warn =
-      days < toAdd.length
-        ? `\n\nAttention : il n'y a que ${days} jour(s) d'ici là, pour ${toAdd.length} blocs (un seul bloc par jour). Les blocs qui ne tiennent pas seront signalés comme impossibles : choisis une date plus lointaine.`
-        : '';
+      perDay > 8
+        ? `\n\nAttention : ça fait ${perDay} h de révision par jour en moyenne, sans compter les devoirs. Choisis une date plus lointaine ou une durée plus courte.`
+        : `\n\nSoit environ ${perDay} h de révision par jour d'ici là (hors devoirs).`;
     if (!confirm(`Ajouter ${toAdd.length} blocs de ${minutes / 60} h (${hours} h au total) à faire avant le ${deadlineDate} ?${warn}`)) return;
     addTasksBulk(
       toAdd.map((r) => ({ subject: r.subject, type: 'revision_chapitre', title: r.title, deadlineDate, estimatedDurationMinutes: minutes, priority: 2 }))

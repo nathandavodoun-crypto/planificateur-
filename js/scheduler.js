@@ -314,6 +314,18 @@ export function recomputeSchedule(now, data) {
 
   // Devoirs à étaler qui partagent la même échéance : chacun reçoit un rang,
   // pour décaler leurs séances au lieu de tout empiler les mêmes jours.
+  // Blocs de révision de chapitre ayant la même échéance : répartis régulièrement
+  // sur les jours disponibles (au lieu de tous passer dans les premiers jours).
+  const chapterRankByTask = new Map();
+  const chapterGroupSize = new Map();
+  for (const task of tasks) {
+    if (task.type !== 'revision_chapitre' || task.status === 'termine' || !task.deadlineDate) continue;
+    if (task.estimatedDurationMinutes - (doneMinutesByTask.get(task.id) || 0) <= 0) continue;
+    const rank = chapterGroupSize.get(task.deadlineDate) || 0;
+    chapterRankByTask.set(task.id, rank);
+    chapterGroupSize.set(task.deadlineDate, rank + 1);
+  }
+
   const spreadCfg = settings.progressiveSpread;
   const spreadRankByTask = new Map();
   const spreadGroupSize = new Map();
@@ -426,7 +438,13 @@ export function recomputeSchedule(now, data) {
         }
       }
     }
-    const notBeforeDates = distributeNotBeforeDates(durations.length, windowStart, windowEnd, minGapDays);
+    let notBeforeDates = distributeNotBeforeDates(durations.length, windowStart, windowEnd, minGapDays);
+    if (chapterRankByTask.has(task.id)) {
+      const group = chapterGroupSize.get(task.deadlineDate) || 1;
+      const span = Math.max(0, diffDaysISO(windowEnd, windowStart));
+      const offset = Math.min(span, Math.floor((chapterRankByTask.get(task.id) * (span + 1)) / group));
+      notBeforeDates = [addDaysISO(windowStart, offset)];
+    }
 
     const slackMinutes = minutesBetween(now, deadlineInstant) - remaining;
 
@@ -479,9 +497,9 @@ export function recomputeSchedule(now, data) {
       const blocks = collectBlocksForDate(cursor, weeklyConstraints, oneOffEvents, [...immutable, ...placed], settings, vacations);
       let free = subtractIntervals([[dayStartMinutes, dayEndMinutes]], blocks);
 
-      const dailyCap = vacation && typeof vacation.dailyCapMinutes === 'number'
-        ? vacation.dailyCapMinutes
-        : isWeekendISO(cursor) ? settings.dailyCapWeekendMinutes : settings.dailyCapWeekdayMinutes;
+      // Vacances : aucune limite de temps par jour (tout doit tenir dans la période) ;
+      // les autres jours gardent la charge max habituelle.
+      const dailyCap = vacation ? Infinity : isWeekendISO(cursor) ? settings.dailyCapWeekendMinutes : settings.dailyCapWeekdayMinutes;
       const usedToday = sumMinutesOnDate(cursor, immutable) + sumMinutesOnDate(cursor, placed);
       let capRemaining = dailyCap - usedToday;
 

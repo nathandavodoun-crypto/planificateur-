@@ -122,7 +122,7 @@ export function renderDayView(container) {
   if (vacation) {
     const badge = document.createElement('div');
     badge.className = 'streak-badge';
-    badge.textContent = `🏖️ ${vacation.label} — rythme léger (max ${Math.round((vacation.dailyCapMinutes / 60) * 10) / 10} h, dès ${vacation.startTime})`;
+    badge.textContent = `🏖️ ${vacation.label} — pas de limite de temps par jour (dès ${vacation.startTime})`;
     wrapper.appendChild(badge);
   }
 

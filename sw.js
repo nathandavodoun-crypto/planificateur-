@@ -3,7 +3,7 @@
 // d'accueil"). Ne touche jamais aux données (elles vivent dans localStorage,
 // pas ici).
 
-const CACHE_VERSION = 'v28';
+const CACHE_VERSION = 'v29';
 const CACHE_NAME = `planificateur-${CACHE_VERSION}`;
 
 const PRECACHE_URLS = [

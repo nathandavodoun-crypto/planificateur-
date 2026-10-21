@@ -216,7 +216,7 @@ export function checkScenario(seed, tamper) {
       }
     }
     const vacDay = vacationForDate(date, vacations);
-    const cap = vacDay ? vacDay.dailyCapMinutes : isWeekendISO(date) ? settings.dailyCapWeekendMinutes : settings.dailyCapWeekdayMinutes;
+    const cap = vacDay ? Infinity : isWeekendISO(date) ? settings.dailyCapWeekendMinutes : settings.dailyCapWeekdayMinutes;
     const blockAlone = list.length === 1 && tasksById.get(list[0].taskId)?.type === 'revision_chapitre'; // bloc unique > charge max, seul sur un jour vide
     if (total > cap + 5 * list.length && !blockAlone) fail('R5 plafond journalier dépassé', `${date} ${total} min > ${cap}`);
   }
