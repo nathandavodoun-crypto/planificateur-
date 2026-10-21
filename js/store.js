@@ -14,7 +14,7 @@ import {
   ensureRecurringColleInstances,
   ensureSpacedRepetitionTasks,
   ensureDsRevisionTasks,
-  applyVacationFocus,
+  pauseSpacedRepetitionDuringVacations,
   planVacationCatchUp,
   setColleChapters as setColleChaptersImpl,
   cascadeCleanupOneOffEvent,
@@ -87,7 +87,7 @@ function recompute() {
   // sessions que recomputeSchedule jette et régénère à chaque appel.
   ensureRecurringColleInstances(state, now);
   ensureSpacedRepetitionTasks(state, now);
-  applyVacationFocus(state, now);
+  pauseSpacedRepetitionDuringVacations(state, now);
   ensureDsRevisionTasks(state, now);
 
   const result = recomputeSchedule(now, state);

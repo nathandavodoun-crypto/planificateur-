@@ -23,7 +23,7 @@ import {
   ensureSpacedRepetitionTasks,
   ensureDsRevisionTasks,
   planVacationCatchUp,
-  applyVacationFocus,
+  pauseSpacedRepetitionDuringVacations,
   setColleChapters,
   handleTaskCompletionSideEffects,
   importChapters,
@@ -1062,76 +1062,74 @@ function scenarioQ() {
 }
 
 // ---------------------------------------------------------------------------
-// Scénario R — Mode focus des vacances : un chapitre par jour, longue séance
+// Scénario R — Révision de chapitre (un bloc d'affilée) + pause de la répétition espacée en vacances
 // ---------------------------------------------------------------------------
 
 function scenarioR() {
   const now = new Date(2026, 9, 19, 8, 0); // lundi 19/10/2026, 08:00
   const settings = defaultSettings();
-  const vac = createVacation({ label: 'Toussaint', startDate: '2026-10-19', endDate: '2026-10-25', dailyCapMinutes: 240, startTime: '09:00', focusMode: true, focusMinutes: 120, workAhead: true, aheadDays: 7 });
-  const rest = createOneOffEvent({ label: 'Repos', category: 'repos', date: '2026-10-21', startTime: '00:00', endTime: '23:59' });
+  const vac = createVacation({ label: 'Toussaint', startDate: '2026-10-19', endDate: '2026-10-25', dailyCapMinutes: 240, startTime: '09:00', pauseSpaced: true });
+  const rev = (title, deadlineDate, minutes = 180, subject = 'maths') => createTask({ subject, type: 'revision_chapitre', title: `Révision — ${title}`, deadlineDate, estimatedDurationMinutes: minutes, priority: 2 });
+  const run = (tasks, extra = {}) => recomputeSchedule(now, { tasks, sessions: [], weeklyConstraints: extra.constraints || [], oneOffEvents: extra.events || [], vacations: extra.vacations ?? [vac], settings: extra.settings || settings });
+  const of = (r, t) => r.sessions.filter((x) => x.taskId === t.id);
+
+  console.log('\n=== Scénario R : révision de chapitre + pause de la répétition espacée ===');
+
+  // 1. Un chapitre = un seul bloc de 3 h, pas de découpage.
+  const one = rev('Suites', '2026-10-25');
+  const r1 = run([one]);
+  console.log(`  Suites : ${of(r1, one).map((x) => `${x.date} ${x.startTime}-${x.endTime}`).join(', ')}`);
+  check('Un chapitre = UN seul bloc de 3 h d\'affilée (pas découpé, pas espacé)', of(r1, one).length === 1 && of(r1, one)[0].durationMinutes === 180);
+  check('… placé dans les vacances, dès le début de journée des vacances (09:00)', of(r1, one)[0].date === '2026-10-19' && of(r1, one)[0].startTime === '09:00');
+
+  // 2. Plusieurs chapitres : un par jour.
+  const chapters = ['Suites', 'Optique', 'Cinétique', 'Intégrales'].map((n, i) => rev(n, '2026-10-25', 180, ['maths', 'physique', 'chimie', 'maths'][i]));
+  const r2 = run(chapters);
+  const days = chapters.map((t) => of(r2, t)[0].date);
+  console.log(`  4 chapitres : ${days.join(', ')}`);
+  check('4 chapitres pour la même date : chacun reçoit son bloc de 3 h', chapters.every((t) => of(r2, t).length === 1 && of(r2, t)[0].durationMinutes === 180));
+  check('… un seul chapitre par jour (la journée ne peut pas en contenir deux)', new Set(days).size === 4);
+  check('… tous avant l\'échéance, sans avertissement', days.every((d) => d <= '2026-10-25') && r2.warnings.length === 0);
+
+  // 3. Jour de repos : jamais dessus.
+  const rest = createOneOffEvent({ label: 'Repos', category: 'repos', date: '2026-10-19', startTime: '00:00', endTime: '23:59' });
+  const r3 = run([rev('Suites', '2026-10-25')], { events: [rest] });
+  check('Un jour de repos n\'a jamais de bloc de révision (reporté au jour suivant)', r3.sessions.length === 1 && r3.sessions[0].date === '2026-10-20');
+
+  // 4. Hors vacances : charge max de la semaine 180 min → 3 h tiennent encore sur un jour vide ; 4 h (240) aussi, seul.
+  const longBlock = rev('Long', '2026-11-10', 240);
+  const r4 = run([longBlock], { vacations: [] });
+  check('Un bloc plus long que la charge max du jour (4 h pour 3 h max) se place quand même, seul, sur un jour vide', of(r4, longBlock).length === 1 && of(r4, longBlock)[0].durationMinutes === 240);
+
+  // 5. Pause de la répétition espacée pendant les vacances.
   const mk = (title, subject, nextReviewDate) => createChapter({ subject, title, dateSeen: '2026-09-01', status: 'active', stage: 0, nextReviewDate });
-  const chapters = [
-    mk('Suites', 'maths', '2026-10-12'), // en retard
-    mk('Optique', 'physique', '2026-10-15'), // en retard
-    mk('Cinétique', 'chimie', '2026-10-23'), // dû pendant les vacances
-    mk('Intégrales', 'maths', '2026-10-23'), // dû le même jour : doit passer un autre jour
-    mk('Mécanique', 'physique', '2026-10-28'), // dû après la reprise (7 j) : ramené dans les vacances
-    mk('Lointain', 'maths', '2026-12-10'), // sans rapport avec les vacances
-  ];
-  const build = (v = vac, ch = chapters) => {
-    const data = { tasks: [], sessions: [], weeklyConstraints: [], oneOffEvents: [rest], chapters: ch.map((c) => ({ ...c })), recurringColleTemplates: [], vacations: [v], settings };
+  const chs = [mk('Dans les vacances', 'maths', '2026-10-22'), mk('Juste après', 'physique', '2026-10-26'), mk('Loin après', 'chimie', '2026-11-20'), mk('Avant', 'maths', '2026-10-19')];
+  const build = (v) => {
+    const data = { tasks: [], sessions: [], weeklyConstraints: [], oneOffEvents: [], chapters: chs.map((c) => ({ ...c })), recurringColleTemplates: [], vacations: [v], settings };
     ensureSpacedRepetitionTasks(data, now);
-    applyVacationFocus(data, now);
+    pauseSpacedRepetitionDuringVacations(data, now);
     const r = recomputeSchedule(now, data);
     return { data, r };
   };
-  const { data, r } = build();
-  const taskOf = (title) => data.tasks.find((t) => t.title === `Révision — ${title}`);
-  const sessionsOf = (title) => r.sessions.filter((x) => x.taskId === taskOf(title)?.id);
-  const daysOf = (title) => [...new Set(sessionsOf(title).map((x) => x.date))].sort();
-  const minutesOf = (title) => sessionsOf(title).reduce((a, x) => a + x.durationMinutes, 0);
+  const paused = build(vac);
+  const spacedInVac = paused.r.sessions.filter((x) => x.date >= '2026-10-19' && x.date <= '2026-10-25' && paused.data.tasks.find((t) => t.id === x.taskId)?.type === 'revision_espacee');
+  console.log('  Révisions espacées après pause :', paused.data.tasks.map((t) => `${t.title.replace('Révision — ', '')} → ${t.deadlineDate}`).join(', '));
+  check('Pause activée : aucune révision espacée (petit bloc) pendant les vacances', spacedInVac.length === 0);
+  check('… les chapitres dus pendant les vacances (ou juste après) reprennent après la fin (≥ 26/10)', paused.data.tasks.filter((t) => t.title.includes('Dans les vacances') || t.title.includes('Juste après') || t.title.includes('Avant')).every((t) => t.deadlineDate >= '2026-10-26'));
+  check('… un chapitre dû bien plus tard n\'est pas touché', paused.data.tasks.find((t) => t.title.includes('Loin après')).deadlineDate === '2026-11-20');
+  check('… aucun avertissement', paused.r.warnings.length === 0);
+  const notPaused = build({ ...vac, pauseSpaced: false });
+  check('Pause désactivée : les révisions espacées restent à leur date', notPaused.data.tasks.find((t) => t.title.includes('Dans les vacances')).deadlineDate === '2026-10-22');
+  const again = build(vac);
+  check('Idempotent : plusieurs recalculs donnent les mêmes dates', again.data.tasks.map((t) => t.deadlineDate).join() === paused.data.tasks.map((t) => t.deadlineDate).join());
 
-  console.log('\n=== Scénario R : mode focus (un chapitre par jour) ===');
-  for (const c of chapters) console.log(`  ${c.title} (dû ${c.nextReviewDate}) → ${daysOf(c.title).join(', ') || '(rien)'} · ${minutesOf(c.title)} min`);
-
-  const focused = ['Suites', 'Optique', 'Cinétique', 'Intégrales', 'Mécanique'];
-  check('Chaque chapitre du programme a une longue séance de 2 h au total', focused.every((t) => minutesOf(t) === 120));
-  check('… concentrée sur UN seul jour par chapitre', focused.every((t) => daysOf(t).length === 1));
-  check('… et jamais deux chapitres le même jour', new Set(focused.map((t) => daysOf(t)[0])).size === focused.length);
-  check('… jamais le jour de repos (21/10) ni hors des vacances', focused.every((t) => daysOf(t)[0] !== '2026-10-21' && daysOf(t)[0] >= '2026-10-19' && daysOf(t)[0] <= '2026-10-25'));
-  check('Les chapitres en retard passent en premier (Suites le lundi 19, puis Optique)', daysOf('Suites')[0] === '2026-10-19' && daysOf('Optique')[0] === '2026-10-20');
-  check('Deux chapitres dus le même jour (23) : l\'un prend le 23, l\'autre le jour libre juste avant (jamais après l\'échéance)', [daysOf('Cinétique')[0], daysOf('Intégrales')[0]].sort().join() === '2026-10-22,2026-10-23');
-  check('Un chapitre dû après la reprise est ramené dans les vacances', daysOf('Mécanique')[0] <= '2026-10-25');
-  check('Un chapitre dû bien plus tard (décembre) remplit le jour libre restant (24/10) au lieu de laisser un trou', daysOf('Lointain').join() === '2026-10-24' && minutesOf('Lointain') === 120);
-  check('Aucune séance de révision ne dépasse la durée max d\'une session (2 h = 2 blocs de 60 min)', r.sessions.every((x) => x.durationMinutes <= settings.maxSessionLengthMinutes));
-  check('Aucun avertissement', r.warnings.length === 0);
-
-  // Plus de chapitres que de jours : aucun petit bloc ne doit rester au milieu des vacances.
-  const shortVac = createVacation({ label: 'Court', startDate: '2026-10-19', endDate: '2026-10-21', dailyCapMinutes: 240, startTime: '09:00', focusMode: true, focusMinutes: 120, workAhead: true, aheadDays: 7 });
-  const many = ['A', 'B', 'C', 'D', 'E'].map((n, i) => mk('Chap ' + n, ['maths', 'physique', 'chimie'][i % 3], ['2026-10-12', '2026-10-19', '2026-10-20', '2026-10-21', '2026-10-22'][i]));
-  const over = build(shortVac, many);
-  const revInVac = over.r.sessions.filter((x) => x.date >= '2026-10-19' && x.date <= '2026-10-21' && over.data.tasks.find((t) => t.id === x.taskId)?.type === 'revision_espacee');
-  check('Plus de chapitres (5) que de jours (3) : pendant les vacances, uniquement des grosses séances de focus, jamais de petit bloc', revInVac.length > 0 && revInVac.every((x) => over.data.tasks.find((t) => t.id === x.taskId).focusDate === x.date));
-  check('… les chapitres sans jour sont reportés juste après la reprise (pas perdus, pas avant la fin)', over.data.tasks.filter((t) => !t.focusDate).every((t) => t.deadlineDate > '2026-10-21') && over.data.tasks.filter((t) => t.focusDate).length === 2 && over.data.tasks.length === 5);
-  check('… et aucun avertissement', over.r.warnings.length === 0);
-
-  // Sans l'option "avance", les chapitres lointains restent à leur date, en petit bloc.
-  const noAhead = build({ ...vac, workAhead: false });
-  const farTask = noAhead.data.tasks.find((t) => t.title === 'Révision — Lointain');
-  check('Sans l\'option "avance" : le chapitre lointain garde son petit bloc habituel', !farTask.focusDate && farTask.estimatedDurationMinutes === settings.spacedRepetition.defaultDurationMinutes);
-
-  // Mode désactivé : petits blocs habituels.
-  const off = build({ ...vac, focusMode: false });
-  const offTask = off.data.tasks.find((t) => t.title === 'Révision — Cinétique');
-  check('Mode focus désactivé : retour aux petits blocs de 20 min', off.data.tasks.every((t) => !t.focusDate && t.estimatedDurationMinutes === settings.spacedRepetition.defaultDurationMinutes) && !!offTask);
-
-  // Un chapitre déjà commencé garde son jour.
-  const inProgress = { ...data, sessions: [createSession({ taskId: taskOf('Suites').id, sessionIndex: 0, date: '2026-10-19', startTime: '09:00', endTime: '10:00', durationMinutes: 60, status: 'terminee' })] };
-  const before = taskOf('Suites').focusDate;
-  applyVacationFocus(inProgress, new Date(2026, 9, 19, 12, 0));
-  check('Un chapitre commencé aujourd\'hui garde son jour (pas de réaffectation en cours de route)', inProgress.tasks.find((t) => t.id === taskOf('Suites').id).focusDate === before);
-  check('Idempotent : plusieurs recalculs donnent le même programme', (() => { const a = build(); const b = build(); return a.data.tasks.map((t) => t.focusDate).join() === b.data.tasks.map((t) => t.focusDate).join(); })());
+  // 6. Nettoyage de l'ancien « mode focus » (blocs de 120 min posés par les versions 24 à 26).
+  const old = { tasks: [], sessions: [], weeklyConstraints: [], oneOffEvents: [], chapters: [{ ...chs[2] }], recurringColleTemplates: [], vacations: [], settings };
+  ensureSpacedRepetitionTasks(old, now);
+  old.tasks[0].focusDate = '2026-10-22';
+  old.tasks[0].estimatedDurationMinutes = 120;
+  pauseSpacedRepetitionDuringVacations(old, now);
+  check('Les anciens blocs « focus » de 2 h sont remis au petit bloc normal', !old.tasks[0].focusDate && old.tasks[0].estimatedDurationMinutes === settings.spacedRepetition.defaultDurationMinutes);
 }
 
 // ---------------------------------------------------------------------------

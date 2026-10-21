@@ -3,7 +3,7 @@
 //
 // Convention de dates : voir js/utils/date.js (dates = "YYYY-MM-DD", heures = "HH:MM").
 
-/** @typedef {'dm'|'exercices'|'preparation_colle'|'revision_ds'|'revision_espacee'|'lecture'|'autre'} TaskType */
+/** @typedef {'dm'|'exercices'|'preparation_colle'|'revision_ds'|'revision_chapitre'|'revision_espacee'|'lecture'|'autre'} TaskType */
 /** @typedef {'a_faire'|'en_cours'|'termine'} TaskStatus */
 /** @typedef {'planifiee'|'terminee'|'non_faite'} SessionStatus */
 
@@ -14,6 +14,7 @@ export const DEFAULT_DURATION_MINUTES_BY_TYPE = {
   exercices: 60,
   preparation_colle: 90,
   revision_ds: 180,
+  revision_chapitre: 180,
   revision_espacee: 20,
   lecture: 45,
   autre: 60,
@@ -24,6 +25,7 @@ export const TASK_TYPE_LABELS = {
   exercices: 'Exercices',
   preparation_colle: 'Préparation de colle',
   revision_ds: 'Révision de DS',
+  revision_chapitre: 'Révision de chapitre',
   revision_espacee: 'Révision espacée',
   lecture: 'Lecture',
   autre: 'Autre',
@@ -169,7 +171,6 @@ export function createTask(partial) {
     manualSessions: null, // null => découpage automatique
     linkedEventId: null,
     dailyMinutes: null, // pour 'revision_ds' auto-généré : minutes à réviser CHAQUE jour avant le DS
-    focusDate: null, // pour 'revision_espacee' en mode focus (vacances) : le jour où ce chapitre a sa grosse séance
     chapterId: null, // pour 'revision_espacee' : le chapitre concerné
     linkedChapterIds: [], // pour 'preparation_colle' auto-généré : chapitres fusionnés
     status: 'a_faire',
@@ -244,10 +245,9 @@ export function createVacation(partial) {
     startTime: '09:00', // matin libre
     workAhead: true,
     aheadDays: 7,
-    // Mode focus : un seul chapitre par jour, en une longue séance, au lieu de
-    // petits blocs de 20 min sur toutes les matières.
-    focusMode: true,
-    focusMinutes: 120,
+    // Pas de répétition espacée pendant les vacances : les révisions de
+    // chapitres en attente reprennent juste après la fin de la période.
+    pauseSpaced: true,
     ...partial,
   };
 }

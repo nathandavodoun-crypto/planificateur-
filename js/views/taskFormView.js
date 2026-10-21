@@ -3,7 +3,7 @@
 
 import { getState, addTask, updateTask, addOneOffEvent, addRecurringColleTemplate, addChapter, addChaptersBulk, setColleChapters } from '../store.js';
 import { DEFAULT_DURATION_MINUTES_BY_TYPE, TASK_TYPE_LABELS } from '../models.js';
-import { todayISO } from '../utils/date.js';
+import { todayISO, addDaysISO } from '../utils/date.js';
 import { fetchDeckNames, deckNameToChapter } from '../ankiConnect.js';
 
 const DAYS_OPTIONS = [
@@ -40,6 +40,7 @@ export function renderTaskFormView(container) {
   tabs.className = 'form-tabs';
   for (const [key, label] of [
     ['devoir', 'Devoir'],
+    ['revision', 'Révision'],
     ['colle', 'Colle'],
     ['chapitre', 'Chapitre'],
   ]) {
@@ -56,7 +57,9 @@ export function renderTaskFormView(container) {
   }
   wrapper.appendChild(tabs);
 
-  if (activeTab === 'colle') {
+  if (activeTab === 'revision') {
+    renderRevisionForm(wrapper, state);
+  } else if (activeTab === 'colle') {
     renderColleForm(wrapper, state);
   } else if (activeTab === 'chapitre') {
     renderChapitreForm(wrapper, state);
@@ -161,6 +164,69 @@ function renderDevoirForm(wrapper, state, editingTask) {
     }
   });
 
+  wrapper.appendChild(form);
+}
+
+// ---------------------------------------------------------------------------
+// Révision de chapitre : un chapitre = UN bloc d'affilée (3 h par défaut)
+// ---------------------------------------------------------------------------
+
+function renderRevisionForm(wrapper, state) {
+  const title = document.createElement('h2');
+  title.textContent = 'Réviser un chapitre';
+  wrapper.appendChild(title);
+
+  const note = document.createElement('p');
+  note.className = 'notice';
+  note.textContent =
+    "Tu donnes juste le(s) chapitre(s) : chacun devient UN bloc de révision d'affilée (3 h par défaut), jamais découpé en petits morceaux ni espacé. Plusieurs chapitres = un par jour, tant que la journée ne peut pas en contenir deux.";
+  wrapper.appendChild(note);
+
+  const today = todayISO(new Date());
+  // Date par défaut : la fin des vacances en cours ou à venir, sinon dans une semaine.
+  const vac = (state.vacations || []).filter((v) => v.endDate >= today).sort((a, b) => (a.endDate < b.endDate ? -1 : 1))[0];
+  const defaultDeadline = vac ? vac.endDate : addDaysISO(today, 7);
+
+  const form = document.createElement('form');
+  form.className = 'task-form';
+  form.innerHTML = `
+    <label>Matière
+      <select name="subject">
+        ${state.settings.subjects.map((s) => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.label)}</option>`).join('')}
+      </select>
+    </label>
+    <label>Chapitre(s) — un par ligne
+      <textarea name="chapters" rows="4" required placeholder="ex. Suites numériques&#10;Intégrales"></textarea>
+    </label>
+    <label>Durée du bloc (en minutes)
+      <input type="number" name="minutes" min="30" step="15" required value="180" />
+    </label>
+    <label>À faire avant le
+      <input type="date" name="deadlineDate" required min="${today}" value="${defaultDeadline}" />
+    </label>
+    <button type="submit" class="btn-primary">Ajouter au planning</button>
+  `;
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    const subject = data.get('subject');
+    const lines = String(data.get('chapters'))
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean);
+    if (lines.length === 0) return;
+    for (const chapter of lines) {
+      addTask({
+        subject,
+        type: 'revision_chapitre',
+        title: `Révision — ${chapter}`,
+        deadlineDate: data.get('deadlineDate'),
+        estimatedDurationMinutes: Number(data.get('minutes')),
+        priority: 2,
+      });
+    }
+    location.hash = '#/jour';
+  });
   wrapper.appendChild(form);
 }
 

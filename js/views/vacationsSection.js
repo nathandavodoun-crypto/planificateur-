@@ -39,28 +39,18 @@ function renderReport(state, vacation) {
   return box;
 }
 
-// Mode focus : un seul chapitre par jour, en une longue séance.
-function renderFocusControls(v) {
+// Pas de répétition espacée pendant les vacances (elle reprend juste après).
+function renderPauseControl(v) {
   const box = document.createElement('div');
   box.className = 'vacation-focus';
-  const on = v.focusMode !== false;
-  const minutes = v.focusMinutes ?? 120;
   box.innerHTML = `
     <label class="checkbox-row">
-      <input type="checkbox" ${on ? 'checked' : ''} />
-      <span>🎯 Mode focus : un chapitre par jour, en une longue séance</span>
+      <input type="checkbox" ${v.pauseSpaced !== false ? 'checked' : ''} />
+      <span>⏸️ Pas de révisions espacées pendant ces vacances (elles reprennent juste après). Pour travailler tes chapitres : Ajouter → Révision.</span>
     </label>
   `;
   const check = box.querySelector('input');
-  check.addEventListener('change', () => updateVacation(v.id, { focusMode: check.checked }));
-  if (on) {
-    const label = document.createElement('label');
-    label.innerHTML = `Durée de la séance par chapitre (min)
-      <input type="number" min="30" max="240" step="15" value="${minutes}" />`;
-    const input = label.querySelector('input');
-    input.addEventListener('change', () => updateVacation(v.id, { focusMinutes: Math.min(240, Math.max(30, Number(input.value) || 120)) }));
-    box.appendChild(label);
-  }
+  check.addEventListener('change', () => updateVacation(v.id, { pauseSpaced: check.checked }));
   return box;
 }
 
@@ -85,13 +75,13 @@ export function renderVacationsSection(state) {
       <div><strong>🏖️ ${escapeHtml(v.label)}</strong></div>
       <div class="meta">${formatDateFR(v.startDate)} → ${formatDateFR(v.endDate)} · max ${formatDuration(v.dailyCapMinutes)}/jour dès ${v.startTime}${v.workAhead ? ` · avance les devoirs dus jusqu'à ${v.aheadDays} j après la reprise` : ''}</div>
     `;
-    head.appendChild(renderFocusControls(v));
+    head.appendChild(renderPauseControl(v));
     head.appendChild(renderReport(state, v));
 
     const actions = document.createElement('div');
     actions.className = 'vacation-actions';
 
-    if (todayISO(new Date()) <= v.endDate) {
+    if (todayISO(new Date()) <= v.endDate && v.pauseSpaced === false) {
       const catchUp = document.createElement('button');
       catchUp.type = 'button';
       catchUp.className = 'btn-secondary';
@@ -136,11 +126,8 @@ export function renderVacationsSection(state) {
       </label>
     </div>
     <label class="checkbox-row">
-      <input type="checkbox" name="focusMode" checked />
-      <span>🎯 Mode focus : chaque jour, un seul chapitre en révision, en une longue séance (au lieu de petits blocs sur toutes les matières).</span>
-    </label>
-    <label>Durée de la séance par chapitre (min)
-      <input type="number" name="focusMinutes" min="30" max="240" step="15" value="120" />
+      <input type="checkbox" name="pauseSpaced" checked />
+      <span>⏸️ Pas de révisions espacées pendant les vacances (elles reprennent juste après).</span>
     </label>
     <label class="checkbox-row">
       <input type="checkbox" name="workAhead" checked />
@@ -164,8 +151,7 @@ export function renderVacationsSection(state) {
       dailyCapMinutes: Math.max(0, Number(data.get('dailyCapMinutes')) || 0),
       startTime: data.get('startTime') || '09:00',
       workAhead: data.get('workAhead') === 'on',
-      focusMode: data.get('focusMode') === 'on',
-      focusMinutes: Math.min(240, Math.max(30, Number(data.get('focusMinutes')) || 120)),
+      pauseSpaced: data.get('pauseSpaced') === 'on',
     });
   });
   section.appendChild(form);

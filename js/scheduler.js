@@ -155,10 +155,6 @@ function computeWindowForTask(task, todayIso, settings, vacations = []) {
     const targetLastDay = maxISO([earliestDay, addDaysISO(task.deadlineDate, -revisionLeadDaysMin)]);
     return { earliestDay, targetLastDay };
   }
-  if (task.type === 'revision_espacee' && task.focusDate) {
-    // Mode focus (vacances) : ce chapitre a sa journée, rien d'autre ce jour-là pour lui.
-    return { earliestDay: task.focusDate, targetLastDay: task.focusDate };
-  }
   if (task.type === 'revision_espacee') {
     const earliestDay = maxISO([todayIso, addDaysISO(task.deadlineDate, -settings.spacedRepetition.windowSlackDays)]);
     const targetLastDay = maxISO([earliestDay, task.deadlineDate]);
@@ -384,7 +380,10 @@ export function recomputeSchedule(now, data) {
     }
 
     let durations;
-    if (task.manualSessions && task.manualSessions.length) {
+    if (task.type === 'revision_chapitre') {
+      // Révision de chapitre : UN seul bloc d'affilée (jamais découpé ni espacé).
+      durations = [round5(remaining)];
+    } else if (task.manualSessions && task.manualSessions.length) {
       // Le découpage manuel de l'utilisateur l'emporte toujours.
       durations = task.manualSessions.slice(alreadyCount).map((s) => s.durationMinutes);
     } else if (task.type === 'revision_ds') {
@@ -444,8 +443,7 @@ export function recomputeSchedule(now, data) {
         // tôt) plutôt que de rendre le devoir impossible à jamais.
         overdue: deadlineInstant.getTime() <= now.getTime(),
         notBeforeDate: notBeforeDates[i],
-        // Mode focus : la séance du chapitre reste CE jour-là (pas de glissement qui la couperait en petits blocs).
-        onlyOnDay: Boolean(task.type === 'revision_espacee' && task.focusDate),
+        singleBlock: task.type === 'revision_chapitre',
         slackMinutes,
         priority: task.priority,
         placed: false,
@@ -520,7 +518,9 @@ export function recomputeSchedule(now, data) {
 
         let placedOne = false;
         for (const unit of eligible) {
-          if (unit.durationMinutes > capRemaining) continue;
+          // Un bloc unique plus long que la charge max du jour est quand même permis sur un jour encore vide.
+          const blockOnEmptyDay = unit.singleBlock && unit.durationMinutes > dailyCap && capRemaining === dailyCap;
+          if (unit.durationMinutes > capRemaining && !blockOnEmptyDay) continue;
           const maxEnd = !unit.overdue && cursor === unit.deadlineDateISO ? unit.deadlineMinutes : Infinity;
           const slot = firstFit(free, unit.durationMinutes, maxEnd);
           if (!slot) continue;

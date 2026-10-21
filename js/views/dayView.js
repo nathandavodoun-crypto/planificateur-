@@ -12,11 +12,13 @@ const TYPE_BADGES = {
   preparation_colle: '🎤',
   revision_espacee: '🔁',
   revision_ds: '📘',
+  revision_chapitre: '📖',
 };
 const TYPE_TITLES = {
   preparation_colle: 'Préparation de colle',
   revision_espacee: 'Révision espacée',
   revision_ds: 'Révision de DS',
+  revision_chapitre: 'Révision de chapitre',
 };
 
 // Jour actuellement affiché — conservé au niveau du module (pas du rendu) pour

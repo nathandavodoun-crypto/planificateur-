@@ -6,7 +6,7 @@
 // événements et chapitres qui servent ensuite d'entrée au moteur pur.
 
 import { createTask, createOneOffEvent, createChapter } from './models.js';
-import { todayISO, weekdayOfISO, addDaysISO, combineDateTime, round5, nowMinutes, timeToMinutes } from './utils/date.js';
+import { todayISO, weekdayOfISO, addDaysISO, combineDateTime, round5 } from './utils/date.js';
 
 function findTask(state, id) {
   return state.tasks.find((t) => t.id === id);
@@ -228,101 +228,36 @@ export function ensureSpacedRepetitionTasks(state, now) {
 }
 
 /**
- * Mode focus des vacances : pendant une période de vacances, chaque chapitre à
- * réviser reçoit SA journée (un seul chapitre par jour) et une longue séance
- * (`focusMinutes`, ex. 2 h) au lieu du petit bloc de 20 min habituel. Upsert
- * idempotent, comme les autres : il ne fait que poser `focusDate` et la durée
- * sur la tâche de révision ; le moteur n'a qu'à placer ce jour-là.
- *
- * - Un chapitre dû pendant les vacances prend le jour libre le plus proche
- *   AVANT sa date (jamais après : l'échéance reste stricte) ; un chapitre déjà
- *   en retard prend le premier jour libre à partir d'aujourd'hui.
- * - Avec l'option "avance", un chapitre dû peu après la reprise est ramené
- *   dans les vacances, puis (s'il reste des jours libres) les chapitres dus plus
- *   tard, les plus proches d'abord : réviser en avance ne fait rien perdre.
- * - Un chapitre déjà commencé garde son jour. Jours de repos exclus.
- * - Faute de jour libre, le chapitre garde son petit bloc habituel.
+ * Pas de répétition espacée pendant les vacances : une révision de chapitre
+ * dont la fenêtre de placement toucherait une période de vacances (si la
+ * période a `pauseSpaced`) est reportée juste après la fin des vacances — le
+ * chapitre n'est pas perdu, sa prochaine révision est simplement décalée.
+ * (Le travail de chapitre pendant les vacances se fait avec les blocs
+ * « Révision de chapitre », saisis à la main.) Upsert idempotent.
  */
-export function applyVacationFocus(state, now) {
+export function pauseSpacedRepetitionDuringVacations(state, now) {
   const todayIso = todayISO(now);
+  const slack = state.settings.spacedRepetition.windowSlackDays ?? 2;
   const defaultMinutes = state.settings.spacedRepetition.defaultDurationMinutes;
-  const subjectOrder = new Map((state.settings.subjects || []).map((s, i) => [s.id, i]));
-  const rest = new Set(state.oneOffEvents.filter((e) => e.category === 'repos').map((e) => e.date));
-  const doneByTask = new Map();
-  for (const sess of state.sessions) {
-    if (sess.status === 'terminee') doneByTask.set(sess.taskId, (doneByTask.get(sess.taskId) || 0) + sess.durationMinutes);
-  }
-
   const tasks = state.tasks.filter((t) => t.type === 'revision_espacee' && t.chapterId && t.status !== 'termine');
-  const assigned = new Map(); // taskId -> { date, minutes }
+
+  // Nettoyage de l'ancien "mode focus" (versions 24 à 26) : retour au petit bloc habituel.
+  for (const t of tasks) {
+    if (t.focusDate) {
+      t.focusDate = null;
+      t.estimatedDurationMinutes = defaultMinutes;
+      t.updatedAt = now.getTime();
+    }
+  }
 
   const vacations = (state.vacations || [])
-    .filter((v) => v.startDate && v.endDate && v.focusMode !== false && v.endDate >= todayIso)
+    .filter((v) => v.startDate && v.endDate && v.pauseSpaced !== false && v.endDate >= todayIso)
     .sort((a, b) => (a.startDate < b.startDate ? -1 : 1));
+  if (vacations.length === 0) return;
 
-  for (const v of vacations) {
-    const days = [];
-    for (let d = todayIso > v.startDate ? todayIso : v.startDate; d <= v.endDate; d = addDaysISO(d, 1)) {
-      if (!rest.has(d)) days.push(d);
-    }
-    if (days.length === 0) continue;
-    // La séance doit tenir dans la charge max du jour de ces vacances.
-    const cap = typeof v.dailyCapMinutes === 'number' ? v.dailyCapMinutes : Infinity;
-    if (cap < 20) continue; // journée de travail quasi nulle : pas de focus possible
-    const minutes = Math.min(Math.max(20, Number(v.focusMinutes) || 120), cap);
-    // Aujourd'hui, seulement s'il reste assez de journée pour la séance entière.
-    const dayEnd = timeToMinutes(state.settings.dayEndCutoff);
-    if (days[0] === todayIso && Math.ceil(nowMinutes(now) / 5) * 5 + minutes + 15 > dayEnd) days.shift();
-    if (days.length === 0) continue;
-    const used = new Set([...assigned.values()].map((a) => a.date));
-    const ahead = v.workAhead ? addDaysISO(v.endDate, v.aheadDays ?? 7) : v.endDate;
-
-    // 1. Les chapitres déjà commencés gardent leur jour.
-    for (const t of tasks) {
-      if (assigned.has(t.id)) continue;
-      if ((doneByTask.get(t.id) || 0) > 0 && t.focusDate && days.includes(t.focusDate) && !used.has(t.focusDate)) {
-        assigned.set(t.id, { date: t.focusDate, minutes });
-        used.add(t.focusDate);
-      }
-    }
-    // 2. Les autres : les plus en retard / les plus proches d'abord.
-    // (les chapitres dus bien plus tard ne sont ramenés dans les vacances que
-    // pour remplir les jours restants, et seulement avec l'option "avance")
-    const todo = tasks
-      .filter((t) => !assigned.has(t.id) && (t.deadlineDate <= ahead || v.workAhead))
-      .sort((a, b) => {
-        if (a.deadlineDate !== b.deadlineDate) return a.deadlineDate < b.deadlineDate ? -1 : 1;
-        return (subjectOrder.get(a.subject) ?? 999) - (subjectOrder.get(b.subject) ?? 999);
-      });
-    for (const t of todo) {
-      let day = null;
-      if (t.deadlineDate < days[0] || t.deadlineDate > ahead) {
-        // En retard / dû avant les vacances, ou bien dû longtemps après : premier jour libre.
-        day = days.find((d) => !used.has(d)) || null;
-      } else {
-        const upper = t.deadlineDate < v.endDate ? t.deadlineDate : v.endDate;
-        for (let i = days.length - 1; i >= 0; i--) {
-          if (days[i] <= upper && !used.has(days[i])) {
-            day = days[i];
-            break;
-          }
-        }
-      }
-      if (day) {
-        assigned.set(t.id, { date: day, minutes });
-        used.add(day);
-      }
-    }
-  }
-
-  // Pendant les vacances en mode focus, les jours appartiennent AUX SEULES grosses
-  // séances : un chapitre qui n'a pas eu de jour (plus de chapitres que de jours)
-  // ne doit pas retomber en petit bloc de 20 min au milieu des vacances. On le
-  // reporte juste après la reprise (sa fenêtre de placement ne touche plus les vacances).
-  const slack = state.settings.spacedRepetition.windowSlackDays ?? 2;
   for (const t of tasks) {
-    if (assigned.has(t.id)) continue;
     for (const v of vacations) {
+      // Fenêtre de placement de cette révision : [échéance - marge, échéance], jamais avant aujourd'hui.
       const windowStart = addDaysISO(t.deadlineDate, -slack) > todayIso ? addDaysISO(t.deadlineDate, -slack) : todayIso;
       const windowEnd = t.deadlineDate > todayIso ? t.deadlineDate : todayIso;
       if (windowStart <= v.endDate && windowEnd >= v.startDate) {
@@ -335,22 +270,6 @@ export function applyVacationFocus(state, now) {
         }
         break;
       }
-    }
-  }
-
-  for (const t of tasks) {
-    const a = assigned.get(t.id);
-    if (a) {
-      if (t.focusDate !== a.date || t.estimatedDurationMinutes !== a.minutes) {
-        t.focusDate = a.date;
-        t.estimatedDurationMinutes = a.minutes;
-        t.updatedAt = now.getTime();
-      }
-    } else if (t.focusDate) {
-      // N'est plus en mode focus (vacances modifiées, jour pris…) : retour au petit bloc habituel.
-      t.focusDate = null;
-      t.estimatedDurationMinutes = defaultMinutes;
-      t.updatedAt = now.getTime();
     }
   }
 }

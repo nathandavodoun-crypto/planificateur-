@@ -5,7 +5,7 @@
 
 import { recomputeSchedule, effectiveDeadlineTime } from '../js/scheduler.js';
 import { defaultSettings, createTask, createWeeklyConstraint, createOneOffEvent, createChapter, createVacation, DEFAULT_SUBJECTS } from '../js/models.js';
-import { ensureRecurringColleInstances, ensureSpacedRepetitionTasks, ensureDsRevisionTasks, applyVacationFocus, setColleChapters, importChapters } from '../js/colleChapters.js';
+import { ensureRecurringColleInstances, ensureSpacedRepetitionTasks, ensureDsRevisionTasks, pauseSpacedRepetitionDuringVacations, setColleChapters, importChapters } from '../js/colleChapters.js';
 import { travelBlockForDate } from '../js/travel.js';
 import { vacationForDate, constraintAppliesOnDate } from '../js/vacations.js';
 import { timeToMinutes, minutesToTime, addDaysISO, todayISO, weekdayOfISO, isWeekendISO, combineDateTime, nowMinutes } from '../js/utils/date.js';
@@ -105,7 +105,7 @@ export function genScenario(seed) {
   const state = { tasks: [], sessions: [], weeklyConstraints, oneOffEvents, chapters: [], recurringColleTemplates: [], vacations, settings };
 
   for (let i = 0, n = r.int(1, 8); i < n; i++) {
-    const type = r.pick(['dm', 'exercices', 'lecture', 'autre', 'revision_ds', 'preparation_colle']);
+    const type = r.pick(['dm', 'exercices', 'lecture', 'autre', 'revision_ds', 'preparation_colle', 'revision_chapitre']);
     state.tasks.push(
       createTask({
         subject: r.pick(SUBJECT_IDS),
@@ -132,7 +132,7 @@ export function genScenario(seed) {
   }
   ensureRecurringColleInstances(state, now);
   ensureSpacedRepetitionTasks(state, now);
-  applyVacationFocus(state, now);
+  pauseSpacedRepetitionDuringVacations(state, now);
   ensureDsRevisionTasks(state, now);
 
   return { now, state, todayIso };
@@ -179,10 +179,10 @@ export function checkScenario(seed, tamper) {
     const travel = travelBlockForDate(s.date, weeklyConstraints, settings, vacations);
     if (travel && a < timeToMinutes(travel.end) && timeToMinutes(travel.start) < b) fail('R2 chevauche le trajet retour', `${where} x ${travel.start}-${travel.end}`);
 
-    // R10 mode focus : pendant des vacances en mode focus, une révision espacée n'est jamais un petit bloc isolé
+    // R10 pause : aucune révision espacée (petit bloc) pendant des vacances avec pause
     if (task && task.type === 'revision_espacee') {
-      const vf = vacationForDate(s.date, vacations);
-      if (vf && vf.focusMode !== false && task.focusDate !== s.date) fail('R10 petit bloc de révision pendant des vacances en mode focus', where);
+      const vp = vacationForDate(s.date, vacations);
+      if (vp && vp.pauseSpaced !== false) fail('R10 révision espacée pendant des vacances en pause', where);
     }
 
     // R9 vacances : pas avant l'heure de début des vacances
@@ -191,7 +191,7 @@ export function checkScenario(seed, tamper) {
 
     // R4 durée
     if (!(b - a > 0)) fail('R4 durée nulle ou négative', where);
-    if (b - a > settings.maxSessionLengthMinutes + 5 && !task?.manualSessions) fail('R4 session plus longue que le maximum', `${where} (max ${settings.maxSessionLengthMinutes})`);
+    if (b - a > settings.maxSessionLengthMinutes + 5 && !task?.manualSessions && task?.type !== 'revision_chapitre') fail('R4 session plus longue que le maximum', `${where} (max ${settings.maxSessionLengthMinutes})`);
 
     // R6 jamais après l'échéance (sauf tâche déjà en retard)
     if (task && task.deadlineDate) {
@@ -217,7 +217,8 @@ export function checkScenario(seed, tamper) {
     }
     const vacDay = vacationForDate(date, vacations);
     const cap = vacDay ? vacDay.dailyCapMinutes : isWeekendISO(date) ? settings.dailyCapWeekendMinutes : settings.dailyCapWeekdayMinutes;
-    if (total > cap + 5 * list.length) fail('R5 plafond journalier dépassé', `${date} ${total} min > ${cap}`);
+    const blockAlone = list.length === 1 && tasksById.get(list[0].taskId)?.type === 'revision_chapitre'; // bloc unique > charge max, seul sur un jour vide
+    if (total > cap + 5 * list.length && !blockAlone) fail('R5 plafond journalier dépassé', `${date} ${total} min > ${cap}`);
   }
 
   // R7 tout le travail est soit placé, soit signalé
