@@ -1133,6 +1133,30 @@ function scenarioR() {
 }
 
 // ---------------------------------------------------------------------------
+// Scénario S — Liste de 20 chapitres de vacances (blocs de 3 h)
+// ---------------------------------------------------------------------------
+
+function scenarioS() {
+  const now = new Date(2026, 9, 19, 8, 0);
+  const settings = defaultSettings();
+  const list = [['maths', 7], ['info', 2], ['physique', 6], ['si', 2], ['chimie', 3]];
+  const tasks = [];
+  for (const [subject, n] of list) for (let i = 0; i < n; i++) tasks.push(createTask({ subject, type: 'revision_chapitre', title: `Révision — Chapitre ${i + 1}`, deadlineDate: '2026-11-15', estimatedDurationMinutes: 180, priority: 2 }));
+  const vac = createVacation({ startDate: '2026-10-19', endDate: '2026-11-02', dailyCapMinutes: 240, startTime: '09:00' });
+  const r = recomputeSchedule(now, { tasks, sessions: [], weeklyConstraints: [], oneOffEvents: [], vacations: [vac], settings });
+  const perDay = new Map();
+  for (const x of r.sessions) perDay.set(x.date, (perDay.get(x.date) || 0) + 1);
+  console.log('\n=== Scénario S : liste de 20 chapitres (3 h chacun) ===');
+  console.log(`  ${r.sessions.length} blocs, ${perDay.size} jours, du ${r.sessions.map((x) => x.date).sort()[0]} au ${r.sessions.map((x) => x.date).sort().pop()}`);
+  check('Les 20 chapitres reçoivent chacun un bloc de 3 h d\'affilée (60 h au total)', tasks.length === 20 && r.sessions.length === 20 && r.sessions.every((x) => x.durationMinutes === 180));
+  check('… un seul bloc par jour', [...perDay.values()].every((n) => n === 1));
+  check('… tout avant l\'échéance, sans avertissement', r.sessions.every((x) => x.date <= '2026-11-15') && r.warnings.length === 0);
+  const tight = tasks.map((t) => ({ ...t, deadlineDate: '2026-10-25' }));
+  const rt = recomputeSchedule(now, { tasks: tight, sessions: [], weeklyConstraints: [], oneOffEvents: [], vacations: [vac], settings });
+  check('Si la date est trop proche (7 jours pour 20 blocs) : 7 blocs placés et le reste signalé, jamais entassé', rt.sessions.length === 7 && rt.warnings.length === 13);
+}
+
+// ---------------------------------------------------------------------------
 
 scenarioA();
 scenarioB();
@@ -1152,6 +1176,7 @@ scenarioO();
 scenarioP();
 scenarioQ();
 scenarioR();
+scenarioS();
 
 console.log(`\n${totalChecks - failedChecks}/${totalChecks} vérifications passées.`);
 if (failedChecks > 0) {

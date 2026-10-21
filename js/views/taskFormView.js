@@ -1,7 +1,7 @@
 // Saisie rapide : devoir (< 15s), colle, ou chapitre — un sélecteur en haut
 // bascule entre les trois petits formulaires, sans changer d'onglet.
 
-import { getState, addTask, updateTask, addOneOffEvent, addRecurringColleTemplate, addChapter, addChaptersBulk, setColleChapters } from '../store.js';
+import { getState, addTask, addTasksBulk, updateTask, addOneOffEvent, addRecurringColleTemplate, addChapter, addChaptersBulk, setColleChapters } from '../store.js';
 import { DEFAULT_DURATION_MINUTES_BY_TYPE, TASK_TYPE_LABELS } from '../models.js';
 import { todayISO, addDaysISO } from '../utils/date.js';
 import { fetchDeckNames, deckNameToChapter } from '../ankiConnect.js';
@@ -167,6 +167,27 @@ function renderDevoirForm(wrapper, state, editingTask) {
   wrapper.appendChild(form);
 }
 
+// Ma liste de chapitres à réviser pendant les vacances (ajout en un clic).
+const VACATION_CHAPTERS = [
+  { subject: 'maths', chapters: [1, 2, 3, 4, 5, 6, 7] },
+  { subject: 'info', chapters: [1, 2] },
+  { subject: 'physique', chapters: [0, 1, 2, 3, 4, 5] },
+  { subject: 'si', chapters: [1, 2] },
+  { subject: 'chimie', chapters: [1, 2, 3] },
+];
+
+/** Les chapitres en alternant les matières (un tour de chaque matière à la fois), pour varier d'un jour à l'autre. */
+function vacationChapterRows() {
+  const rows = [];
+  const longest = Math.max(...VACATION_CHAPTERS.map((g) => g.chapters.length));
+  for (let i = 0; i < longest; i++) {
+    for (const group of VACATION_CHAPTERS) {
+      if (i < group.chapters.length) rows.push({ subject: group.subject, title: `Révision — Chapitre ${group.chapters[i]}` });
+    }
+  }
+  return rows;
+}
+
 // ---------------------------------------------------------------------------
 // Révision de chapitre : un chapitre = UN bloc d'affilée (3 h par défaut)
 // ---------------------------------------------------------------------------
@@ -228,6 +249,47 @@ function renderRevisionForm(wrapper, state) {
     location.hash = '#/jour';
   });
   wrapper.appendChild(form);
+
+  // ---- Ma liste de vacances en un clic ------------------------------------------------
+  const quick = document.createElement('div');
+  quick.className = 'section';
+  const rows = vacationChapterRows();
+  const quickBtn = document.createElement('button');
+  quickBtn.type = 'button';
+  quickBtn.className = 'btn-secondary';
+  quickBtn.textContent = `📚 Ajouter ma liste de vacances (${rows.length} chapitres)`;
+  const quickNote = document.createElement('p');
+  quickNote.className = 'meta';
+  quickNote.textContent =
+    'Maths 1 à 7 · Info 1 à 2 · Physique 0 à 5 · SI 1 à 2 · Chimie 1 à 3. Un bloc par chapitre, avec la durée et la date « à faire avant le » ci-dessus (les matières sont alternées d\'un jour à l\'autre).';
+  quickBtn.addEventListener('click', () => {
+    const data = new FormData(form);
+    const deadlineDate = data.get('deadlineDate');
+    const minutes = Number(data.get('minutes')) || 180;
+    if (!deadlineDate) {
+      alert('Choisis d\'abord la date « à faire avant le ».');
+      return;
+    }
+    const existing = new Set(getState().tasks.filter((t) => t.type === 'revision_chapitre').map((t) => `${t.subject}|${t.title}`));
+    const toAdd = rows.filter((r) => !existing.has(`${r.subject}|${r.title}`));
+    if (toAdd.length === 0) {
+      alert('Ces chapitres sont déjà tous dans ton planning.');
+      return;
+    }
+    const days = Math.round((new Date(deadlineDate + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000) + 1;
+    const hours = Math.round(((toAdd.length * minutes) / 60) * 10) / 10;
+    const warn =
+      days < toAdd.length
+        ? `\n\nAttention : il n'y a que ${days} jour(s) d'ici là, pour ${toAdd.length} blocs (un seul bloc par jour). Les blocs qui ne tiennent pas seront signalés comme impossibles : choisis une date plus lointaine.`
+        : '';
+    if (!confirm(`Ajouter ${toAdd.length} blocs de ${minutes / 60} h (${hours} h au total) à faire avant le ${deadlineDate} ?${warn}`)) return;
+    addTasksBulk(
+      toAdd.map((r) => ({ subject: r.subject, type: 'revision_chapitre', title: r.title, deadlineDate, estimatedDurationMinutes: minutes, priority: 2 }))
+    );
+    location.hash = '#/jour';
+  });
+  quick.append(quickBtn, quickNote);
+  wrapper.appendChild(quick);
 }
 
 // ---------------------------------------------------------------------------

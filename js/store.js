@@ -129,6 +129,14 @@ export function addTask(partial) {
   return task;
 }
 
+/** Ajout groupé (ex. toute une liste de chapitres) : un seul recalcul pour tous. */
+export function addTasksBulk(partials) {
+  const created = partials.map((partial) => createTask(partial));
+  state.tasks.push(...created);
+  commit();
+  return created;
+}
+
 export function updateTask(id, changes) {
   const task = state.tasks.find((t) => t.id === id);
   if (!task) return;
